@@ -4675,6 +4675,12 @@ uint32 WorldObject::SpellHealingBonusDone(Unit* pVictim, SpellEntry const* spell
     float  DoneTotalMod = 1.0f;
     int32  DoneTotal = 0;
 
+    // Creature healing — apply AutoScaler dynamic scaling factor (same factor as physical/spell damage)
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
+    {
+        DoneTotalMod *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+    }
+
     if (pUnit)
     {
         // Healing done percent
