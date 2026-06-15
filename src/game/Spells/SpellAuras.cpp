@@ -4411,6 +4411,11 @@ void Aura::HandleAuraModIncreaseMountedSpeed(bool /*apply*/, bool Real)
                             player->RemoveSpellsCausingAura(SPELL_AURA_MOUNTED);
                             return;
                     }
+
+                    // Mount speed floor at 40% — all mounts with riding-based speed get at least this much
+                    if (m_modifier.m_amount < 40)
+                        m_modifier.m_amount = 40;
+                    break;
             }
         }
     }
