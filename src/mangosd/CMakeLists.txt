@@ -163,6 +163,11 @@ endif()
 
 set(EXECUTABLE_LINK_FLAGS "")
 
+if(WIN32 AND MSVC)
+  # Generate mangosd.map for crash-dump symbol resolution (e.g. mangosd+0x51C780).
+  set(EXECUTABLE_LINK_FLAGS "/MAP ${EXECUTABLE_LINK_FLAGS}")
+endif()
+
 if(UNIX)
   set(EXECUTABLE_LINK_FLAGS "-pthread ${EXECUTABLE_LINK_FLAGS} -rdynamic")
 endif()
@@ -182,4 +187,6 @@ install(FILES ${CMAKE_CURRENT_BINARY_DIR}/mangosd.conf.dist DESTINATION ${CONF_D
 
 if(WIN32 AND MSVC)
   install(FILES ${CMAKE_CURRENT_BINARY_DIR}/\${BUILD_TYPE}/${EXECUTABLE_NAME}.pdb DESTINATION ${BIN_DIR} CONFIGURATIONS Debug)
+  # Ship the .map file for crash-dump triage without a debugger.
+  install(FILES ${CMAKE_CURRENT_BINARY_DIR}/\${BUILD_TYPE}/${EXECUTABLE_NAME}.map DESTINATION ${BIN_DIR} CONFIGURATIONS Release RelWithDebInfo)
 endif()
