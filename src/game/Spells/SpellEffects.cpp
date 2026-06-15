@@ -2388,6 +2388,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                 // Functional summonable toys:
 
                 case 36600: // Blazing Forge Kit
+                case 35999: // Sacred Chalice
                 case 46002: // Goblin Brainwashing Device
                 case 46001: // Portable Mailbox
                 {
@@ -2406,6 +2407,7 @@ void Spell::EffectDummy(SpellEffectIndex eff_idx)
                         switch (m_spellInfo->Id)
                         {
                             case 36600: object = 3000684; break; // Blazing Forge Kit
+                            case 35999: object = 3000686; break; // Sacred Chalice
                             case 46002: object = 1000333; break; // Goblin Brainwashing Device
                             case 46001: object = 144112; break; // Portable Mailbox
                             default: break;
