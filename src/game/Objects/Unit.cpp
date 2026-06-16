@@ -4857,6 +4857,14 @@ void Unit::HandleTriggers(Unit* pVictim, uint32 procExtra, uint32 amount, int32 
             if ((triggeredByAura->GetSpellProto()->TargetAuraState == AURA_STATE_HEALTHLESS_20_PERCENT) && (!itr.target || !itr.target->HasAuraState(AURA_STATE_HEALTHLESS_20_PERCENT)))
                 continue;
 
+            // Guard against AuraType values exceeding TOTAL_AURAS.
+            // The AuraProcHandler[TOTAL_AURAS] array only covers indices 0..TOTAL_AURAS-1;
+            // spell_template data may reference out-of-range types (e.g. Berserker Rage 18499
+            // has EffectApplyAuraName[2]=226). Without this check, AuraProcHandler[>=TOTAL_AURAS]
+            // reads past the array boundary and crashes the server.
+            if (auraModifier->m_auraname >= TOTAL_AURAS)
+                continue;
+
             SpellAuraProcResult procResult = (*caster.*AuraProcHandler[auraModifier->m_auraname])(itr.target, amount, originalAmount, triggeredByAura, procSpell, itr.procFlag, procExtra, cooldown);
             switch (procResult)
             {
