@@ -1601,8 +1601,21 @@ struct mob_naxxramasPlagueSlimeAI : public ScriptedAI
     void ChangeColor()
     {
         uint32 spell = urand(28987, 28990);
-        if(const SpellEntry* entry = sSpellMgr.GetSpellEntry(spell))
+        if (const SpellEntry* entry = sSpellMgr.GetSpellEntry(spell))
+        {
+            // 保存缩放后的血量，因为 UpdateEntry → SelectLevel 会重算 MaxHealth 为模板值，破坏 AutoScaling
+            uint32 prevMaxHealth = m_creature->GetMaxHealth();
+            float prevHealthPct = m_creature->GetHealthPercent();
+
             m_creature->UpdateEntry(entry->EffectMiscValue[0]);
+
+            // 恢复缩放后的 MaxHealth（UpdateEntry 重算为模板值后覆盖回来）
+            if (m_creature->GetMaxHealth() != prevMaxHealth)
+            {
+                m_creature->SetMaxHealth(prevMaxHealth);
+                m_creature->SetHealthPercent(prevHealthPct);
+            }
+        }
         if (prev_spell)
             m_creature->RemoveAurasDueToSpell(prev_spell);
         DoCastSpellIfCan(m_creature, spell, CF_TRIGGERED);
