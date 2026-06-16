@@ -79,6 +79,7 @@ jobs:
             bin/${{ inputs.build_type || 'Release' }}/mangosd.exe
             bin/${{ inputs.build_type || 'Release' }}/realmd.exe
             bin/${{ inputs.build_type || 'Release' }}/ACE.dll
+            bin/${{ inputs.build_type || 'Release' }}/mangosd.map
           if-no-files-found: error
 
       - name: Upload build logs on failure
