@@ -1068,6 +1068,11 @@ class Creature : public Unit
         float GetAutoScalerDamageFactor() const { return m_autoScalerDamageFactor; }
         void SetAutoScalerDamageFactor(float factor) { m_autoScalerDamageFactor = factor; }
 
+        // AutoScaler: tracks whether this creature has been touched by AutoScaler scaling.
+        // Used by UpdateEntry to auto-re-scale after SelectLevel resets stats.
+        bool IsAutoScalerApplied() const { return m_autoScalerApplied; }
+        void SetAutoScalerApplied(bool val) { m_autoScalerApplied = val; }
+
     protected:
         bool MeetsSelectAttackingRequirement(Unit* pTarget, SpellEntry const* pSpellInfo, uint32 selectFlags) const;
 
@@ -1143,6 +1148,7 @@ class Creature : public Unit
 
     private:
         float m_autoScalerDamageFactor = 1.0f;
+        bool m_autoScalerApplied = false;
         GridReference<Creature> m_gridRef;
         CreatureInfo const* m_creatureInfo;
 };

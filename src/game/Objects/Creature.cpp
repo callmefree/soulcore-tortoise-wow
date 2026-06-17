@@ -566,6 +566,20 @@ bool Creature::UpdateEntry(uint32 Entry, CreatureData const* data /*=nullptr*/, 
 
     SelectLevel(GetCreatureInfo(), preserveHPAndPower ? GetHealthPercent() : 100.0f, preserveHPAndPower ? GetPowerPercent(POWER_MANA) : 100.0f);
 
+    // AutoScaler: re-apply scaling after entry change if the creature was previously scaled.
+    // During initial creation (CreateFromProto → UpdateEntry), m_autoScalerApplied is false
+    // because the creature has never been scaled → no re-scale (correct, SummonCreature handles it).
+    // During mid-combat/respawn UpdateEntry, m_autoScalerApplied is true (was scaled before)
+    // → auto-re-scale to preserve dynamic scaling through SelectLevel's stat reset.
+    if (m_autoScalerApplied && GetMap() && GetMap()->IsDungeon())
+    {
+        uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
+        uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
+        if (playerCount > 0)
+            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap());
+        // ScaleCreature sets m_autoScalerApplied = true internally
+    }
+
     SetFactionTemplateId(GetCreatureInfo()->faction);
     SetDefaultGossipMenuId(GetCreatureInfo()->gossip_menu_id);
     SetUInt32Value(UNIT_NPC_FLAGS, GetCreatureInfo()->npc_flags);
@@ -1643,6 +1657,9 @@ void Creature::SelectLevel(const CreatureInfo *cinfo, float percentHealth, float
 
     SetBaseWeaponDamage(RANGED_ATTACK, MINDAMAGE, cinfo->ranged_dmg_min * damagemod);
     SetBaseWeaponDamage(RANGED_ATTACK, MAXDAMAGE, cinfo->ranged_dmg_max * damagemod);
+
+    // SelectLevel resets all stats — invalidate any prior AutoScaler scaling
+    m_autoScalerApplied = false;
 }
 
 float Creature::_GetHealthMod(int32 rank)
@@ -3373,6 +3390,7 @@ void Creature::ResetStats()
         UpdateDamagePhysical(BASE_ATTACK);
     }
     m_autoScalerDamageFactor = 1.0f;
+    m_autoScalerApplied = false;
     RemoveAllAuras();
 }
 

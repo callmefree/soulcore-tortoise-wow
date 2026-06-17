@@ -156,6 +156,9 @@ void AutoScaler::ScaleCreature(Creature* creature, uint32 playerCount, uint32 ma
 
     // Store spell damage scaling factor (same as physical damage)
     creature->SetAutoScalerDamageFactor(damageScaleFactor);
+
+    // Mark this creature as having been scaled by AutoScaler
+    creature->SetAutoScalerApplied(true);
 }
 
 void AutoScaler::GenerateScaledMoneyLoot(Creature* creature, Loot* loot)
