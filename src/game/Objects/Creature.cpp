@@ -1842,6 +1842,26 @@ bool Creature::LoadFromDB(uint32 guidlow, Map *map, bool force)
     if (data->GetCreatureIdCount() > 1)
         AddCreatureState(CSTATE_INIT_AI_ON_RESPAWN);
 
+    // AutoScaler: scale creatures loaded from DB into dungeon instances that
+    // already have players (e.g. lazy grid loading when player walks near).
+    // During initial map load, GetPlayersCountExceptGMs() == 0 → no-op.
+    // ScaleCreature is idempotent: if already scaled (e.g. via Respawn flow
+    // → ScaleCreature → Add), the m_autoScalerApplied check inside Map::Add will
+    // prevent double-scaling. This hook covers all DB-load paths:
+    //   - Lazy grid loading (LoadHelper → LoadFromDB)
+    //   - Pool spawns (PoolManager → LoadFromDB)
+    //   - Game event spawns (SpawnInMaps → LoadFromDB)
+    //   - Map::SpawnCreature / LoadGridAndSpawn
+    if (GetMap() && GetMap()->IsDungeon() && sWorld.getConfig(CONFIG_BOOL_AUTOSCALER_ENABLE))
+    {
+        uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
+        if (playerCount > 0)
+        {
+            uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
+            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap());
+        }
+    }
+
     return true;
 }
 
