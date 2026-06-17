@@ -564,6 +564,9 @@ bool Creature::UpdateEntry(uint32 Entry, CreatureData const* data /*=nullptr*/, 
     SetSheath(SHEATH_STATE_MELEE);
     SetByteValue(UNIT_FIELD_BYTES_2, 1, UNIT_BYTE2_FLAG_AURAS);
 
+    // Save AutoScaler state BEFORE SelectLevel (which resets m_autoScalerApplied to false)
+    bool wasAutoScaled = m_autoScalerApplied;
+
     SelectLevel(GetCreatureInfo(), preserveHPAndPower ? GetHealthPercent() : 100.0f, preserveHPAndPower ? GetPowerPercent(POWER_MANA) : 100.0f);
 
     // AutoScaler: re-apply scaling after entry change if the creature was previously scaled.
@@ -571,7 +574,9 @@ bool Creature::UpdateEntry(uint32 Entry, CreatureData const* data /*=nullptr*/, 
     // because the creature has never been scaled → no re-scale (correct, SummonCreature handles it).
     // During mid-combat/respawn UpdateEntry, m_autoScalerApplied is true (was scaled before)
     // → auto-re-scale to preserve dynamic scaling through SelectLevel's stat reset.
-    if (m_autoScalerApplied && GetMap() && GetMap()->IsDungeon())
+    // Note: we must check wasAutoScaled (saved before SelectLevel), not m_autoScalerApplied
+    // because SelectLevel already reset it to false.
+    if (wasAutoScaled && GetMap() && GetMap()->IsDungeon())
     {
         uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
         uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
