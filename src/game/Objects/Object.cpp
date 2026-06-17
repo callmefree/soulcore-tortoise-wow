@@ -4588,6 +4588,13 @@ uint32 WorldObject::MeleeDamageBonusDone(Unit* pVictim, uint32 pdamage, WeaponAt
     if (pUnit)
         DonePercent *= pUnit->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_DONE_VERSUS, creatureTypeMask);
 
+    // AutoScaler: apply dynamic scaling factor to melee damage for non-pet creatures.
+    // Only for non-weapon-based spells (like Hateful Strike) where base damage comes from
+    // spell template, not from weapon damage. Weapon-damage-based spells already have the
+    // AutoScaler factor baked in via the creature's scaled UNIT_FIELD_MINDAMAGE/MAXDAMAGE.
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet() && !isWeaponDamageBasedSpell)
+        DonePercent *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+
     // final calculation
     // =================
 
