@@ -4597,10 +4597,10 @@ uint32 WorldObject::MeleeDamageBonusDone(Unit* pVictim, uint32 pdamage, WeaponAt
     if (pUnit)
         DonePercent *= pUnit->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_DONE_VERSUS, creatureTypeMask);
 
-    // AutoScaler factor is now applied at the top of this function (before all early returns).
-    // Note: weapon-damage-based spells already have the AutoScaler factor baked in via
-    // the creature's scaled UNIT_FIELD_MINDAMAGE/MAXDAMAGE — the top-of-function handler
-    // correctly applies it to all paths.
+    // AutoScaler: also apply here for full calc path (early returns use scaledDamage at top).
+    // Weapon-damage-based spells already have the factor baked in via scaled weapon damage.
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet() && !isWeaponDamageBasedSpell)
+        DonePercent *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
 
     // final calculation
     // =================
@@ -4697,7 +4697,9 @@ uint32 WorldObject::SpellHealingBonusDone(Unit* pVictim, SpellEntry const* spell
     // Done total percent damage auras
     float  DoneTotalMod = 1.0f;
     int32  DoneTotal = 0;
-    // Note: AutoScaler factor is now applied at the top of this function (before all early returns).
+    // AutoScaler: also apply here for full calc path (early returns use scaledHeal at top).
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
+        DoneTotalMod *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
 
     if (pUnit)
     {
@@ -4827,7 +4829,8 @@ uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellP
     if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
     {
         DoneTotalMod *= Creature::_GetSpellDamageMod(((Creature*)this)->GetCreatureInfo()->rank);
-        // AutoScaler factor is now applied at the top of this function (before all early returns).
+        // AutoScaler: also apply here for full calc path (early returns use scaledDamage at top).
+        DoneTotalMod *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
     }
 
     if (pUnit)
