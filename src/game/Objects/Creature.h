@@ -1073,6 +1073,10 @@ class Creature : public Unit
         bool IsAutoScalerApplied() const { return m_autoScalerApplied; }
         void SetAutoScalerApplied(bool val) { m_autoScalerApplied = val; }
 
+        // AutoScaler: force re-apply scaling (e.g. after script-driven phase transition).
+        // Can be called from boss scripts: me->ReapplyAutoScaler();
+        void ReapplyAutoScaler();
+
     protected:
         bool MeetsSelectAttackingRequirement(Unit* pTarget, SpellEntry const* pSpellInfo, uint32 selectFlags) const;
 

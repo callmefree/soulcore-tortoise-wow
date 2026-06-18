@@ -581,7 +581,7 @@ bool Creature::UpdateEntry(uint32 Entry, CreatureData const* data /*=nullptr*/, 
         uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
         uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
         if (playerCount > 0)
-            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap());
+            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap(), true);
         // ScaleCreature sets m_autoScalerApplied = true internally
     }
 
@@ -812,7 +812,7 @@ void Creature::Update(uint32 update_diff, uint32 diff)
                     uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
                     uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
                     if (playerCount > 0)
-                        sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap());
+                        sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap(), true);
                 }
                 
                 GetMap()->Add(this);
@@ -1858,7 +1858,7 @@ bool Creature::LoadFromDB(uint32 guidlow, Map *map, bool force)
         if (playerCount > 0)
         {
             uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
-            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap());
+            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap(), true);
         }
     }
 
@@ -3417,6 +3417,30 @@ void Creature::ResetStats()
     m_autoScalerDamageFactor = 1.0f;
     m_autoScalerApplied = false;
     RemoveAllAuras();
+
+    // AutoScaler: if in a dungeon, automatically re-apply scaling after stat reset.
+    if (GetMap() && GetMap()->IsDungeon() && sWorld.getConfig(CONFIG_BOOL_AUTOSCALER_ENABLE))
+    {
+        uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
+        if (playerCount > 0)
+        {
+            uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
+            sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap(), true);
+        }
+    }
+}
+
+void Creature::ReapplyAutoScaler()
+{
+    if (!GetMap() || !GetMap()->IsDungeon())
+        return;
+    if (!sWorld.getConfig(CONFIG_BOOL_AUTOSCALER_ENABLE))
+        return;
+
+    uint32 playerCount = GetMap()->GetPlayersCountExceptGMs();
+    uint32 maxCount = ((DungeonMap*)GetMap())->GetMaxPlayers();
+    if (playerCount > 0)
+        sAutoScaler->ScaleCreature(this, playerCount, maxCount, GetMap(), true);
 }
 
 Unit* Creature::GetNearestVictimInRange(float min, float max, bool includeCreatures)

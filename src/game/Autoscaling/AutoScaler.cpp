@@ -70,7 +70,7 @@ void AutoScaler::Scale(DungeonMap* map)
     }
 }
 
-void AutoScaler::ScaleCreature(Creature* creature, uint32 playerCount, uint32 maxCount, Map* map)
+void AutoScaler::ScaleCreature(Creature* creature, uint32 playerCount, uint32 maxCount, Map* map, bool forceRecacheBase)
 {
     (void)map;
 
@@ -126,9 +126,18 @@ void AutoScaler::ScaleCreature(Creature* creature, uint32 playerCount, uint32 ma
 
     creature->SetMaxHealth(std::max(1u, static_cast<uint32>(healthScaleValue(creature->GetCreateHealth()))));
 
+    // If forceRecacheBase is set (e.g. after a form/phase change), discard old cached base values
+    // so the current (post-transition) stats are stored as the new baseline.
+    if (forceRecacheBase)
+    {
+        auto it = baseDamages.find(creature->GetEntry());
+        if (it != baseDamages.end())
+            baseDamages.erase(it);
+    }
+
     if (baseDamages.find(creature->GetEntry()) == baseDamages.end())
     {
-        // store base vals.
+        // store base vals (fresh cache or after forceRecacheBase).
         auto tup = std::make_tuple(
                 std::make_pair(creature->GetWeaponDamageRange(BASE_ATTACK, MINDAMAGE), creature->GetWeaponDamageRange(BASE_ATTACK, MAXDAMAGE)),
                 std::make_pair(creature->GetFloatValue(UNIT_FIELD_MINRANGEDDAMAGE), creature->GetFloatValue(UNIT_FIELD_MAXRANGEDDAMAGE)),

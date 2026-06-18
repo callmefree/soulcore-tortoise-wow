@@ -1213,7 +1213,7 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
                     loot->FillLoot(lootid, LootTemplates_Creature, looter, false, false, pCreatureVictim);
                 }
             }
-            if (pCreatureVictim->GetMap()->IsDungeon())
+            if (pCreatureVictim->GetMap()->IsDungeon() && sWorld.getConfig(CONFIG_BOOL_AUTOSCALER_ENABLE))
                 sAutoScaler->GenerateScaledMoneyLoot(pCreatureVictim, loot);
             else
                 loot->GenerateMoneyLoot(pCreatureVictim->GetGoldMin(), pCreatureVictim->GetGoldMax());

@@ -4491,12 +4491,21 @@ void WorldObject::CalculateSpellDamage(SpellNonMeleeDamage* damageInfo, int32 da
  */
 uint32 WorldObject::MeleeDamageBonusDone(Unit* pVictim, uint32 pdamage, WeaponAttackType attType, SpellEntry const* spellProto, SpellEffectIndex effectIndex, DamageEffectType damagetype, uint32 stack, Spell* spell, bool flat)
 {
+    // AutoScaler: apply scaling factor first, before any early returns
+    uint32 scaledDamage = pdamage;
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
+    {
+        float factor = static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+        if (factor != 1.0f)
+            scaledDamage = static_cast<uint32>(pdamage * factor);
+    }
+
     if (!pVictim || pdamage == 0)
-        return pdamage;
+        return scaledDamage;
 
     // Some spells don't benefit from done mods
     if (spellProto && spellProto->HasAttribute(SPELL_ATTR_EX3_IGNORE_CASTER_MODIFIERS))
-        return pdamage;
+        return scaledDamage;
 
     // differentiate for weapon damage based spells
     bool isWeaponDamageBasedSpell = !(spellProto && (damagetype == DOT || spellProto->HasEffect(SPELL_EFFECT_SCHOOL_DAMAGE)));
@@ -4588,12 +4597,10 @@ uint32 WorldObject::MeleeDamageBonusDone(Unit* pVictim, uint32 pdamage, WeaponAt
     if (pUnit)
         DonePercent *= pUnit->GetTotalAuraMultiplierByMiscMask(SPELL_AURA_MOD_DAMAGE_DONE_VERSUS, creatureTypeMask);
 
-    // AutoScaler: apply dynamic scaling factor to melee damage for non-pet creatures.
-    // Only for non-weapon-based spells (like Hateful Strike) where base damage comes from
-    // spell template, not from weapon damage. Weapon-damage-based spells already have the
-    // AutoScaler factor baked in via the creature's scaled UNIT_FIELD_MINDAMAGE/MAXDAMAGE.
-    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet() && !isWeaponDamageBasedSpell)
-        DonePercent *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+    // AutoScaler factor is now applied at the top of this function (before all early returns).
+    // Note: weapon-damage-based spells already have the AutoScaler factor baked in via
+    // the creature's scaled UNIT_FIELD_MINDAMAGE/MAXDAMAGE — the top-of-function handler
+    // correctly applies it to all paths.
 
     // final calculation
     // =================
@@ -4662,10 +4669,19 @@ uint32 WorldObject::MeleeDamageBonusDone(Unit* pVictim, uint32 pdamage, WeaponAt
  */
 uint32 WorldObject::SpellHealingBonusDone(Unit* pVictim, SpellEntry const* spellProto, SpellEffectIndex effectIndex, int32 healamount, DamageEffectType damagetype, uint32 stack, Spell* spell)
 {
+    // AutoScaler: apply scaling factor first, before any early returns
+    int32 scaledHeal = healamount;
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
+    {
+        float factor = static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+        if (factor != 1.0f)
+            scaledHeal = static_cast<int32>(healamount * factor);
+    }
+
     Unit* pUnit = ToUnit();
 
     // For totems get healing bonus from owner (statue isn't totem in fact)
-    if (GetTypeId() == TYPEID_UNIT && ((Creature*)this)->IsTotem() && ((Totem*)this)->GetTotemType() != TOTEM_STATUE)
+    if (pUnit && GetTypeId() == TYPEID_UNIT && ((Creature*)this)->IsTotem() && ((Totem*)this)->GetTotemType() != TOTEM_STATUE)
         if (Unit* owner = pUnit->GetOwner())
             return owner->SpellHealingBonusDone(pVictim, spellProto, effectIndex, healamount, damagetype, stack, spell);
 
@@ -4674,19 +4690,14 @@ uint32 WorldObject::SpellHealingBonusDone(Unit* pVictim, SpellEntry const* spell
         (spellProto->Custom & SPELL_CUSTOM_FIXED_DAMAGE) || spellProto->HasAttribute(SPELL_ATTR_EX3_IGNORE_CASTER_MODIFIERS))
     {
         //DEBUG_UNIT(this, DEBUG_SPELLS_DAMAGE, "SpellHealingBonusDone[spell=%u]: has fixed damage (SPELL_DAMAGE_CLASS_NONE)", spellProto->Id);
-        return healamount < 0 ? 0 : healamount;
+        return scaledHeal < 0 ? 0 : scaledHeal;
     }
 
     // Healing Done
     // Done total percent damage auras
     float  DoneTotalMod = 1.0f;
     int32  DoneTotal = 0;
-
-    // Creature healing — apply AutoScaler dynamic scaling factor (same factor as physical/spell damage)
-    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
-    {
-        DoneTotalMod *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
-    }
+    // Note: AutoScaler factor is now applied at the top of this function (before all early returns).
 
     if (pUnit)
     {
@@ -4778,13 +4789,22 @@ int32 WorldObject::SpellBaseHealingBonusDone(SpellSchoolMask schoolMask)
  */
 uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellProto, SpellEffectIndex effectIndex, uint32 pdamage, DamageEffectType damagetype, uint32 stack, Spell* spell)
 {
+    // AutoScaler: apply scaling factor first, before any early returns
+    uint32 scaledDamage = pdamage;
+    if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
+    {
+        float factor = static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+        if (factor != 1.0f)
+            scaledDamage = static_cast<uint32>(pdamage * factor);
+    }
+
     if (!spellProto || !pVictim || damagetype == DIRECT_DAMAGE)
-        return pdamage;
+        return scaledDamage;
 
     if (spellProto->Custom & SPELL_CUSTOM_FIXED_DAMAGE)
-        return pdamage;
+        return scaledDamage;
     if (spellProto->HasAttribute(SPELL_ATTR_EX3_IGNORE_CASTER_MODIFIERS))
-        return pdamage;
+        return scaledDamage;
 
     // Ignite damage already includes modifiers
     if (spellProto->IsFitToFamily<SPELLFAMILY_MAGE, CF_MAGE_IGNITE>())
@@ -4807,8 +4827,7 @@ uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellP
     if (GetTypeId() == TYPEID_UNIT && !((Creature*)this)->IsPet())
     {
         DoneTotalMod *= Creature::_GetSpellDamageMod(((Creature*)this)->GetCreatureInfo()->rank);
-        // Apply AutoScaler dynamic scaling factor (same factor as physical damage)
-        DoneTotalMod *= static_cast<Creature*>(this)->GetAutoScalerDamageFactor();
+        // AutoScaler factor is now applied at the top of this function (before all early returns).
     }
 
     if (pUnit)
