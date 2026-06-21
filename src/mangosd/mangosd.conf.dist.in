@@ -1847,6 +1847,11 @@ Death.Bones.Battleground = 1
 Death.Ghost.RunSpeed.World = 1.0
 Death.Ghost.RunSpeed.Battleground = 1.0
 
+# Rate.Player.RunSpeed
+#  Player base run speed multiplier. 1.0 = standard (7 yards/sec), 1.4 = 40% faster.
+#  Only affects players, not creatures/NPCs.
+Rate.Player.RunSpeed = 1.4
+
 # Corpses.UpdateMinutes
 
 Corpses.UpdateMinutes = 20
