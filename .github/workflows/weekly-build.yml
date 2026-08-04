@@ -1,0 +1,69 @@
+name: soulcore-weekly-build
+
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: soulcore-build
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git \
+            libace-dev libssl-dev libbz2-dev zlib1g-dev \
+            default-libmysqlclient-dev
+
+      - name: Ccache cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-ubuntu22-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            ccache-ubuntu22-${{ github.ref_name }}-
+            ccache-ubuntu22-
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_SCRIPTS=ON \
+            -DUSE_EXTRACTORS=OFF \
+            -DALLOW_TURTLE_ADDONS=ON \
+            -DUSE_PCH=OFF
+
+      - name: Build
+        run: cmake --build build -j2
+
+      - name: Package
+        run: |
+          VERSION=$(git rev-parse --short HEAD)
+          mkdir -p dist/bin dist/etc dist/sql
+          cp build/bin/* dist/bin/ 2>/dev/null || true
+          find build -name "*.conf.dist" -exec cp {} dist/etc/ \; 2>/dev/null || true
+          cp -r sql/* dist/sql/ 2>/dev/null || true
+          tar czf soulcore-tortoise-wow-$VERSION.tar.gz dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soulcore-tortoise-wow
+          path: soulcore-tortoise-wow-*.tar.gz
+          retention-days: 14
