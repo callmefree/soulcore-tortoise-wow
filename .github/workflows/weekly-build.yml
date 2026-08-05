@@ -47,7 +47,7 @@ jobs:
             -DUSE_SCRIPTS=ON \
             -DUSE_EXTRACTORS=OFF \
             -DALLOW_TURTLE_ADDONS=ON \
-            -DUSE_PCH=OFF
+            -DUSE_PCH=ON
 
       - name: Build
         run: cmake --build build -j2
