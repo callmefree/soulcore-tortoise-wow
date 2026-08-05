@@ -58,8 +58,10 @@ jobs:
           mkdir -p dist/bin dist/etc dist/sql
           # Linux 构建:二进制输出在 build/ 下(源码根 bin/ 仅 WIN32 分支生效)
           cp build/src/mangosd/mangosd build/src/realmd/realmd dist/bin/
-          # conf.dist 由 CMake configure 生成到 build/(源里是 .in 模板)
+          # configure 生成的 conf.dist 在 build/ 下
           find build -name "*.conf.dist" -exec cp {} dist/etc/ \;
+          # 源码 .in 模板无占位符,直接改名兜底(mangosd/mods/rate/realmd)
+          find src -name "*.conf.dist.in" -exec sh -c 'cp "$1" "dist/etc/$(basename "$1" .in)"' _ {} \;
           cp -r sql/* dist/sql/ 2>/dev/null || true
           tar czf soulcore-tortoise-wow-$VERSION.tar.gz dist
 
@@ -68,4 +70,75 @@ jobs:
         with:
           name: soulcore-tortoise-wow
           path: soulcore-tortoise-wow-*.tar.gz
+          retention-days: 14
+
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup vcpkg
+        shell: pwsh
+        run: |
+          if (-not (Test-Path C:\vcpkg)) {
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
+            & C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          }
+          echo "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-windows-${{ github.ref_name }}-${{ github.sha }}
+          restore-keys: |
+            vcpkg-windows-${{ github.ref_name }}-
+            vcpkg-windows-
+
+      - name: Install ACE
+        shell: pwsh
+        run: |
+          C:\vcpkg\vcpkg install ace --triplet x64-windows
+          echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build -A x64 `
+            "-DACE_ROOT=C:\vcpkg\installed\x64-windows" `
+            -DALLOW_TURTLE_ADDONS=ON `
+            -DUSE_STD_MALLOC=ON `
+            -DUSE_SCRIPTS=ON `
+            -DUSE_ANTICHEAT=ON `
+            -DUSE_DISCORD_BOT=OFF `
+            -DUSE_EXTRACTORS=OFF `
+            -DUSE_LIBCURL=OFF `
+            -DUSE_TRACY=OFF `
+            -DUSE_PCH=ON `
+            "-DCMAKE_CXX_FLAGS=/EHsc /wd4996 /wd4355 /wd4244 /wd4267 /MP"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $VERSION = (git rev-parse --short HEAD).Trim()
+          New-Item -ItemType Directory -Force -Path dist\bin, dist\etc, dist\sql | Out-Null
+          Copy-Item bin\Release\mangosd.exe, bin\Release\realmd.exe dist\bin\ -ErrorAction SilentlyContinue
+          Copy-Item C:\vcpkg\installed\x64-windows\bin\ACE.dll dist\bin\ -ErrorAction SilentlyContinue
+          Get-ChildItem build -Recurse -Filter *.conf.dist -ErrorAction SilentlyContinue | Copy-Item -Destination dist\etc\
+          Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + $_.BaseName + ".dist") }
+          Copy-Item -Recurse sql\* dist\sql\ -ErrorAction SilentlyContinue
+          tar czf soulcore-tortoise-wow-$VERSION-windows.tar.gz dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soulcore-tortoise-wow-windows
+          path: soulcore-tortoise-wow-*-windows.tar.gz
           retention-days: 14
