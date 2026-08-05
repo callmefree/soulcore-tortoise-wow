@@ -56,8 +56,8 @@ jobs:
         run: |
           VERSION=$(git rev-parse --short HEAD)
           mkdir -p dist/bin dist/etc dist/sql
-          cp build/bin/* dist/bin/ 2>/dev/null || true
-          find build -name "*.conf.dist" -exec cp {} dist/etc/ \; 2>/dev/null || true
+          cp bin/* dist/bin/ 2>/dev/null || true
+          find . -name "*.conf.dist" -not -path "./build/*" -exec cp {} dist/etc/ \; 2>/dev/null || true
           cp -r sql/* dist/sql/ 2>/dev/null || true
           tar czf soulcore-tortoise-wow-$VERSION.tar.gz dist
 
