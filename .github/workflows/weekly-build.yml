@@ -56,8 +56,10 @@ jobs:
         run: |
           VERSION=$(git rev-parse --short HEAD)
           mkdir -p dist/bin dist/etc dist/sql
-          cp bin/* dist/bin/ 2>/dev/null || true
-          find . -name "*.conf.dist" -not -path "./build/*" -exec cp {} dist/etc/ \; 2>/dev/null || true
+          # Linux 构建:二进制输出在 build/ 下(源码根 bin/ 仅 WIN32 分支生效)
+          cp build/src/mangosd/mangosd build/src/realmd/realmd dist/bin/
+          # conf.dist 由 CMake configure 生成到 build/(源里是 .in 模板)
+          find build -name "*.conf.dist" -exec cp {} dist/etc/ \;
           cp -r sql/* dist/sql/ 2>/dev/null || true
           tar czf soulcore-tortoise-wow-$VERSION.tar.gz dist
 
