@@ -51,6 +51,9 @@
 #include "GameEventMgr.h"
 #include "Anticheat/Warden/Warden.hpp"
 #include "TWDebuff/TWDebuff.hpp"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 #ifdef WIN32
 #include "..\zlib\zlib.h"
@@ -764,6 +767,14 @@ void WorldSession::HandleResurrectResponseOpcode(WorldPacket & recv_data)
     if (!GetPlayer()->IsRessurectRequestedBy(guid))
         return;
 
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCanResurrect(GetPlayer()))
+    {
+        GetPlayer()->ClearResurrectRequestData();
+        return;
+    }
+#endif
+
     GetPlayer()->ResurectUsingRequestData();                // will call spawncorpsebones
 }
 
@@ -795,6 +806,11 @@ void WorldSession::HandleAreaTriggerOpcode(WorldPacket & recv_data)
         DEBUG_LOG("Player '%s' (GUID: %u) too far, ignore Area Trigger ID: %u", pPlayer->GetName(), pPlayer->GetGUIDLow(), triggerId);
         return;
     }
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnAreaTrigger(pPlayer, triggerId))
+        return;
+#endif
 
     if (sScriptMgr.OnAreaTrigger(pPlayer, pTrigger))
         return;

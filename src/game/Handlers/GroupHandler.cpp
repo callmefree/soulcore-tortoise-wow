@@ -31,6 +31,9 @@
 #include "Group.h"
 #include "SocialMgr.h"
 #include "Util.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 /* differeces from off:
     -you can uninvite yourself - is is useful
@@ -139,6 +142,14 @@ void WorldSession::HandleGroupInviteOpcode(WorldPacket & recv_data)
             return;
         }
     }
+
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCanGroupInvite(GetPlayer(), membername))
+    {
+        SendPartyResult(PARTY_OP_INVITE, membername, ERR_BAD_PLAYER_NAME_S);
+        return;
+    }
+#endif
 
     // ok, but group not exist, start a new group
     // but don't create and save the group to the DB until

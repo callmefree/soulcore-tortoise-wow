@@ -27,6 +27,9 @@
 #include "MoveSplineInit.h"
 #include "MoveSpline.h"
 #include "Anticheat.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 //----- Point Movement Generator
 template<class T>
@@ -115,7 +118,12 @@ void PointMovementGenerator<Creature>::MovementInform(Creature& unit)
     if (!unit.IsAlive())
         return;
 
-    if (unit.AI())
+    bool skipMovementInform = false;
+#ifdef USE_LUA
+    skipMovementInform = sTurtleLuaEngine.OnCreatureReachWP(&unit, POINT_MOTION_TYPE, m_id);
+#endif
+
+    if (!skipMovementInform && unit.AI())
         unit.AI()->MovementInform(POINT_MOTION_TYPE, m_id);
 
     if (unit.IsTemporarySummon())

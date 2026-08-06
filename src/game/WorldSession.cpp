@@ -30,6 +30,9 @@
 #include "Opcodes.h"
 #include "WorldPacket.h"
 #include "WorldSession.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "Player.h"
 #include "ObjectMgr.h"
 #include "Group.h"
@@ -167,6 +170,13 @@ char const* WorldSession::GetPlayerName() const
 /// Send a packet to the client
 void WorldSession::SendPacket(WorldPacket const* packet)
 {
+#ifdef USE_LUA
+    WorldPacket luaPacket(*packet);
+    if (!sTurtleLuaEngine.OnPacketSend(this, luaPacket))
+        return;
+    packet = &luaPacket;
+#endif
+
     // There is a maximum size packet.
     if (packet->size() > 0x8000)
     {
@@ -445,6 +455,17 @@ void WorldSession::ProcessPackets(PacketFilter& updater)
             continue;
         }
 
+#ifdef USE_LUA
+        if (!sTurtleLuaEngine.OnPacketReceive(this, *packet))
+        {
+            delete packet;
+
+            if (totalPackets > MaxPacketsPerUpdate)
+                break;
+
+            continue;
+        }
+#endif
 
         ALL_SESSION_SCRIPTS(this, OnPacket(packet->GetOpcode()));
         OpcodeHandler const& opHandle = opcodeTable[packet->GetOpcode()];
@@ -601,6 +622,9 @@ void WorldSession::LogoutPlayer(bool Save)
 
         sLog.out(LOG_CHAR, "[%s:%u@%s] Logout Character:[%s] (guid: %u)", GetUsername().c_str(), GetAccountId(), GetRemoteAddress().c_str(), _player->GetName() , _player->GetGUIDLow());
         sDBLogger.LogCharAction({ _player->GetGUIDLow(), GetAccountId(), LogCharAction::ActionLogout, {} });
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnPlayerLogout(_player);
+#endif
         if (ObjectGuid lootGuid = GetPlayer()->GetLootGuid())
             DoLootRelease(lootGuid);
 

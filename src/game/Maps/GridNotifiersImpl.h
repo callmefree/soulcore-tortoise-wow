@@ -33,6 +33,7 @@
 #include "DBCEnums.h"
 #include "Spell.h"
 #include "SpellMgr.h"
+#include "../LuaEngine/TurtleLuaEngine.h"
 
 template<class T>
 inline void MaNGOS::VisibleNotifier::Visit(GridRefManager<T> &m)
@@ -64,7 +65,10 @@ inline void CallAIMoveLOS(Creature* c, Unit* moving)
     {
         bool alert = false;
         if (moving->IsVisibleForOrDetect(c, c, true, false, &alert))
-              c->AI()->MoveInLineOfSight(moving);
+        {
+            if (!sTurtleLuaEngine.OnCreatureMoveInLOS(c, moving))
+                c->AI()->MoveInLineOfSight(moving);
+        }
         else
             if (moving->GetTypeId() == TYPEID_PLAYER && moving->HasStealthAura() && alert)
                 c->AI()->OnMoveInStealth(moving);

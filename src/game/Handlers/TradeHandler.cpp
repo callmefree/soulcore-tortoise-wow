@@ -32,6 +32,9 @@
 #include "SocialMgr.h"
 #include "Language.h"
 #include "Chat.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 void WorldSession::SendTradeStatus(TradeStatus status)
 {
@@ -697,6 +700,14 @@ void WorldSession::HandleInitiateTradeOpcode(WorldPacket& recvPacket)
         SendTradeStatus(TRADE_STATUS_TRIAL_ACCOUNT);
         return;
     }
+
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCanInitTrade(_player, pOther))
+    {
+        SendTradeStatus(TRADE_STATUS_TRADE_CANCELED);
+        return;
+    }
+#endif
 
     // OK start trade
     _player->m_trade = new TradeData(_player, pOther);

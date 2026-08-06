@@ -52,6 +52,9 @@
 #include <G3D/Quat.h>
 #include "SuspiciousStatisticMgr.h"
 #include "PerfStats.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 bool QuaternionData::isUnit() const
 {
@@ -158,6 +161,11 @@ void GameObject::AddToWorld()
                 m_allowedLooters.insert(pPlayer->GetObjectGuid());
         }
     }
+
+#ifdef USE_LUA
+    if (!wasInWorld)
+        sTurtleLuaEngine.OnGameObjectAdd(this);
+#endif
 }
 
 void GameObject::AIM_Initialize()
@@ -171,6 +179,10 @@ void GameObject::RemoveFromWorld()
     ///- Remove the gameobject from the accessor
     if (IsInWorld())
     {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnGameObjectRemove(this);
+#endif
+
         if (m_zoneScript)
             m_zoneScript->OnGameObjectRemove(this);
 
@@ -334,6 +346,9 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
     }
 
     ///- UpdateAI
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnGameObjectAIUpdate(this, update_diff);
+#endif
     if (i_AI)
         i_AI->UpdateAI(update_diff);
 
@@ -446,12 +461,21 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
                             {
                                 m_respawnDelayTime = -1; //spawn animation
                                 GetMap()->Add(this);
+                                spawned = true;
                                 m_respawnDelayTime = 0;
                                 SendGameObjectReset();
                             }
                             else
+                            {
                                 GetMap()->Add(this);
+                                spawned = true;
+                            }
                     }
+
+#ifdef USE_LUA
+                    if (spawned)
+                        sTurtleLuaEngine.OnGameObjectSpawn(this);
+#endif
                 }
             }
 
@@ -2289,6 +2313,11 @@ void GameObject::SetLootState(LootState state)
 {
     m_lootState = state;
     UpdateCollisionState();
+
+#ifdef USE_LUA
+    if (IsInWorld())
+        sTurtleLuaEngine.OnGameObjectLootStateChanged(this, state);
+#endif
 }
 
 void GameObject::SetGoState(GOState state)
@@ -2296,6 +2325,11 @@ void GameObject::SetGoState(GOState state)
     //SetByteValue(GAMEOBJECT_BYTES_1, 0, state); // 3.3.5
     SetUInt32Value(GAMEOBJECT_STATE, state);
     UpdateCollisionState();
+
+#ifdef USE_LUA
+    if (IsInWorld())
+        sTurtleLuaEngine.OnGameObjectGoStateChanged(this, state);
+#endif
 }
 
 void GameObject::SetDisplayId(uint32 modelId)

@@ -28,6 +28,7 @@
 #include "Player.h"
 #include "Chat.h"
 #include "SpellAuras.h"
+#include "TurtleLuaEngine.h"
 #include "World.h"
 
 void WorldSession::HandleGMTicketGetTicketOpcode(WorldPacket & /*recv_data*/)
@@ -64,6 +65,7 @@ void WorldSession::HandleGMTicketUpdateTextOpcode(WorldPacket & recv_data)
             ticket->SetMessage(ticketText);
             ticket->SetTicketType(TicketType(type));
             ticket->SaveToDB();
+            sTurtleLuaEngine.OnTicketUpdateLastChange(ticket, ticketText);
             response = GMTICKET_RESPONSE_UPDATE_SUCCESS;
 
             sWorld.SendGMTicketText(LANG_COMMAND_TICKETUPDATED, GetPlayer()->GetName(), ticket->GetId());

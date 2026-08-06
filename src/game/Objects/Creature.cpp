@@ -43,6 +43,9 @@
 #include "InstanceData.h"
 #include "MapPersistentStateMgr.h"
 #include "BattleGroundMgr.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "Spell.h"
 #include "Util.h"
 #include "GridNotifiers.h"
@@ -267,6 +270,25 @@ void Creature::AddToWorld()
         AIM_Initialize();
     if (!bWasInWorld && m_zoneScript)
         m_zoneScript->OnCreatureCreate(this);
+#ifdef USE_LUA
+    if (!bWasInWorld)
+    {
+        sTurtleLuaEngine.OnCreatureAdd(this);
+
+        if (IsTemporarySummon())
+        {
+            TemporarySummon* summon = static_cast<TemporarySummon*>(this);
+            Unit* summoner = summon->GetSummoner();
+            if (summoner)
+                sTurtleLuaEngine.OnCreatureSummoned(this, summoner);
+
+            if (summon->GetSummonerGuid().IsPlayer())
+                if (summoner)
+                    if (Player* player = summoner->ToPlayer())
+                        sTurtleLuaEngine.OnPetAddedToWorld(player, this);
+        }
+    }
+#endif
 }
 
 void Creature::RemoveFromWorld()
@@ -274,6 +296,9 @@ void Creature::RemoveFromWorld()
     ///- Remove the creature from the accessor
     if (IsInWorld())
     {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnCreatureRemove(this);
+#endif
         if (AI())
             AI()->OnRemoveFromWorld();
         if (GetObjectGuid().GetHigh() == HIGHGUID_UNIT)
@@ -334,7 +359,13 @@ void Creature::RemoveCorpse()
     loot.clear();
     uint32 respawnDelay = 0;
 
-    if (AI())
+#ifdef USE_LUA
+    bool skipCorpseRemovedAI = sTurtleLuaEngine.OnCreatureCorpseRemoved(this, respawnDelay);
+#else
+    bool skipCorpseRemovedAI = false;
+#endif
+
+    if (!skipCorpseRemovedAI && AI())
         AI()->CorpseRemoved(respawnDelay);
 
     if (m_isCreatureLinkingTrigger)
@@ -776,6 +807,10 @@ void Creature::Update(uint32 update_diff, uint32 diff)
 
                     AI()->JustRespawned();
                 }
+
+#ifdef USE_LUA
+                sTurtleLuaEngine.OnCreatureSpawn(this);
+#endif
                 
                 if (m_zoneScript)
                     m_zoneScript->OnCreatureRespawn(this);
@@ -944,6 +979,9 @@ void Creature::Update(uint32 update_diff, uint32 diff)
 
             if (AI())
             {
+#ifdef USE_LUA
+                sTurtleLuaEngine.OnCreatureAIUpdate(this, diff);
+#endif
                 // do not allow the AI to be changed during update
                 m_AI_locked = true;
                 try
@@ -3302,6 +3340,10 @@ void Creature::RemoveAurasAtReset()
 
 void Creature::OnLeaveCombat()
 {
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnCreatureLeaveCombat(this);
+#endif
+
     UpdateCombatState(false);
     UpdateCombatWithZoneState(false);
 
@@ -3328,6 +3370,10 @@ void Creature::OnEnterCombat(Unit* pWho, bool notInCombat)
 
     if (notInCombat)
     {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnCreatureEnterCombat(this, pWho);
+#endif
+
         ResetCombatTime();
         UpdateCombatState(true);
 

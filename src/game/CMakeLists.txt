@@ -560,6 +560,16 @@ if(WIN32)
   )
 endif()
 
+if(USE_LUA)
+  list(APPEND game_SRCS
+    LuaEngine/TurtleLuaEngine.cpp
+    LuaEngine/TurtleLuaEngine.h
+  )
+  set(LUA_VERSION "lua52" CACHE STRING "Lua version to use")
+  set(LUA_STATIC ON CACHE BOOL "link lua statically")
+  add_subdirectory(${CMAKE_SOURCE_DIR}/dep/lualib/lua ${CMAKE_BINARY_DIR}/dep/lualib/lua)
+endif()
+
 
 source_group("Object"
   REGULAR_EXPRESSION .*
@@ -611,6 +621,12 @@ target_link_libraries(game
   shared
   Detour
 )
+
+if(USE_LUA)
+  target_link_libraries(game
+    lualib
+  )
+endif()
 
 if(WIN32)
 	if (ENABLE_PROFILING)

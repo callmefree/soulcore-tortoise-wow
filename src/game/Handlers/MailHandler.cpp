@@ -40,6 +40,9 @@
 #include "Anticheat.h"
 #include "AccountMgr.h"
 #include "Database/DatabaseImpl.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 extern bool IsPlayerHardcore(uint32 lowGuid);
 
@@ -404,6 +407,14 @@ void WorldSession::HandleSendMailCallback(WorldSession::AsyncMailSendRequest* re
             return;
         }
     }
+
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCanSendMail(loadedPlayer, req->receiver, req->mailboxGuid, req->subject, req->body, req->money, req->COD, item))
+    {
+        SendMailResult(0, MAIL_SEND, MAIL_ERR_INTERNAL_ERROR);
+        return;
+    }
+#endif
 
     // Antispam checks
     if (loadedPlayer->GetLevel() < sWorld.getConfig(CONFIG_UINT32_MAILSPAM_LEVEL) && !loadedPlayer->GetSession()->HasHighLevelCharacter() &&

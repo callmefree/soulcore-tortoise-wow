@@ -32,6 +32,9 @@
 #include "CharacterDatabaseCache.h"
 #include "AuraRemovalMgr.h"
 #include "PerfStats.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 //numbers represent minutes * 100 while happy (you get 100 loyalty points per min while happy)
 uint32 const LevelUpLoyalty[6] =
@@ -106,6 +109,12 @@ void Pet::AddToWorld()
         GetCharmInfo()->SetIsFollowing(false);
         GetCharmInfo()->SetIsReturning(false);
     }
+
+#ifdef USE_LUA
+    if (!wasInWorld)
+        if (Player* owner = GetOwner() ? GetOwner()->ToPlayer() : nullptr)
+            sTurtleLuaEngine.OnPetAddedToWorld(owner, this);
+#endif
 }
 
 void Pet::RemoveFromWorld()
@@ -1192,7 +1201,8 @@ void Pet::Unsummon(PetSaveMode mode, Unit* owner /*= nullptr*/)
                 // the guardian ref, so it can still be utilized if necessary
                 if (Creature *creature = owner->ToCreature())
                 {
-                    if (creature->AI())
+                    bool skipDespawnAI = sTurtleLuaEngine.OnCreatureSummonedCreatureDespawn(creature, this);
+                    if (!skipDespawnAI && creature->AI())
                         creature->AI()->SummonedCreatureDespawn(this);
                 }
 

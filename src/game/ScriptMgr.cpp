@@ -26,6 +26,9 @@
 #include "GossipDef.h"
 #include "SpellAuras.h"
 #include "ScriptLoader.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "Conditions.h"
 #include "GameEventMgr.h"
 #include "CreatureGroups.h"
@@ -1777,6 +1780,11 @@ AuraScript* ScriptMgr::GetAuraScript(SpellEntry const* pSpell)
 
 bool ScriptMgr::OnGossipHello(Player* pPlayer, Creature* pCreature)
 {
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnCreatureGossipHello(pPlayer, pCreature))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pCreature->GetScriptId()];
 
     if (!pTempScript || !pTempScript->pGossipHello)
@@ -1789,6 +1797,11 @@ bool ScriptMgr::OnGossipHello(Player* pPlayer, Creature* pCreature)
 
 bool ScriptMgr::OnGossipHello(Player* pPlayer, GameObject* pGameObject)
 {
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnGameObjectGossipHello(pPlayer, pGameObject))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pGameObject->GetGOInfo()->ScriptId];
 
     if (!pTempScript || !pTempScript->pGOGossipHello)
@@ -1802,6 +1815,11 @@ bool ScriptMgr::OnGossipHello(Player* pPlayer, GameObject* pGameObject)
 bool ScriptMgr::OnGossipSelect(Player* pPlayer, Creature* pCreature, uint32 sender, uint32 action, const char* code)
 {
     sLog.outDebug("Gossip selection%s, sender: %d, action: %d", code ? " with code" : "", sender, action);
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnCreatureGossipSelect(pPlayer, pCreature, sender, action, code))
+        return true;
+#endif
 
     Script* pTempScript = m_NPC_scripts[pCreature->GetScriptId()];
 
@@ -1829,6 +1847,11 @@ bool ScriptMgr::OnGossipSelect(Player* pPlayer, GameObject* pGameObject, uint32 
 {
     sLog.outDebug("Gossip selection%s, sender: %d, action: %d", code ? " with code" : "", sender, action);
 
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnGameObjectGossipSelect(pPlayer, pGameObject, sender, action, code))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pGameObject->GetGOInfo()->ScriptId];
 
     if (code)
@@ -1851,10 +1874,27 @@ bool ScriptMgr::OnGossipSelect(Player* pPlayer, GameObject* pGameObject, uint32 
     return false;
 }
 
+bool ScriptMgr::OnGossipSelect(Player* pPlayer, Item* pItem, uint32 sender, uint32 action, const char* code)
+{
+    sLog.outDebug("Item gossip selection%s, sender: %d, action: %d", code ? " with code" : "", sender, action);
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemGossipSelect(pPlayer, pItem, sender, action, code))
+        return true;
+#endif
+
+    return false;
+}
+
 bool ScriptMgr::OnQuestAccept(Player* pPlayer, Creature* pCreature, Quest const* pQuest)
 {
     //quest scripts have higher priority
     if (OnQuestAcceptByScript(pPlayer, pQuest)) return true;
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnCreatureQuestAccept(pPlayer, pCreature, pQuest))
+        return true;
+#endif
 
     Script* pTempScript = m_NPC_scripts[pCreature->GetScriptId()];
 
@@ -1871,6 +1911,11 @@ bool ScriptMgr::OnQuestAccept(Player* pPlayer, GameObject* pGameObject, Quest co
     //quest scripts have higher priority
     if (OnQuestAcceptByScript(pPlayer, pQuest)) return true;
 
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnGameObjectQuestAccept(pPlayer, pGameObject, pQuest))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pGameObject->GetGOInfo()->ScriptId];
 
     if (!pTempScript || !pTempScript->pGOQuestAccept)
@@ -1885,6 +1930,11 @@ bool ScriptMgr::OnQuestAccept(Player* pPlayer, Item* pItem, Quest const* pQuest)
 {
     //quest scripts have higher priority
     if (OnQuestAcceptByScript(pPlayer, pQuest)) return true;
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemQuestAccept(pPlayer, pItem, pQuest))
+        return true;
+#endif
 
     Script* pTempScript = m_NPC_scripts[pItem->GetProto()->ScriptId];
 
@@ -1960,6 +2010,11 @@ bool ScriptMgr::OnQuestRewarded(Player* pPlayer, Creature* pCreature, Quest cons
 {
     if (OnQuestRewardedByScript(pPlayer, pQuest)) return true;
 
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnCreatureQuestReward(pPlayer, pCreature, pQuest))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pCreature->GetScriptId()];
 
     if (!pTempScript || !pTempScript->pQuestRewardedNPC)
@@ -1973,6 +2028,11 @@ bool ScriptMgr::OnQuestRewarded(Player* pPlayer, Creature* pCreature, Quest cons
 bool ScriptMgr::OnQuestRewarded(Player* pPlayer, GameObject* pGameObject, Quest const* pQuest)
 {
     if (OnQuestRewardedByScript(pPlayer, pQuest)) return true;
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnGameObjectQuestReward(pPlayer, pGameObject, pQuest))
+        return true;
+#endif
 
     Script* pTempScript = m_NPC_scripts[pGameObject->GetGOInfo()->ScriptId];
 
@@ -2020,6 +2080,11 @@ bool ScriptMgr::OnGameObjectOpen(Player* pPlayer, GameObject* pGameObject)
 
 bool ScriptMgr::OnGameObjectUse(Player* pPlayer, GameObject* pGameObject)
 {
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnGameObjectUse(pPlayer, pGameObject))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pGameObject->GetGOInfo()->ScriptId];
 
     if (!pTempScript || !pTempScript->pGOHello)
@@ -2032,12 +2097,38 @@ bool ScriptMgr::OnGameObjectUse(Player* pPlayer, GameObject* pGameObject)
 
 bool ScriptMgr::OnItemUse(Player* pPlayer, Item* pItem, SpellCastTargets& targets)
 {
+    ObjectGuid itemGuid = pItem ? pItem->GetObjectGuid() : ObjectGuid();
+
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemUse(pPlayer, pItem, targets))
+        return true;
+
+    if (pPlayer && !itemGuid.IsEmpty())
+        pItem = pPlayer->GetItemByGuid(itemGuid);
+
+    if (pItem && OnItemGossipHello(pPlayer, pItem, targets))
+        return true;
+#endif
+
+    if (!pItem)
+        return true;
+
     Script* pTempScript = m_NPC_scripts[pItem->GetProto()->ScriptId];
 
 	if (!pTempScript || !pTempScript->pItemUse)
 		return false;
 
 	return pTempScript->pItemUse(pPlayer, pItem, targets);
+}
+
+bool ScriptMgr::OnItemGossipHello(Player* pPlayer, Item* pItem, SpellCastTargets& targets)
+{
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemGossipHello(pPlayer, pItem, targets))
+        return true;
+#endif
+
+    return false;
 }
 
 bool ScriptMgr::OnItemUseSpell(Player* pPlayer, Item* pItem, SpellCastTargets const& targets)
@@ -2048,6 +2139,26 @@ bool ScriptMgr::OnItemUseSpell(Player* pPlayer, Item* pItem, SpellCastTargets co
         return false;
 
     return pTempScript->pItemUseSpell(pPlayer, pItem, targets);
+}
+
+bool ScriptMgr::OnItemExpire(Player* pPlayer, ItemPrototype const* pProto)
+{
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemExpire(pPlayer, pProto))
+        return true;
+#endif
+
+    return false;
+}
+
+bool ScriptMgr::OnItemRemove(Player* pPlayer, Item* pItem)
+{
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemRemove(pPlayer, pItem))
+        return true;
+#endif
+
+    return false;
 }
 
 bool ScriptMgr::OnAreaTrigger(Player* pPlayer, AreaTriggerEntry const* atEntry)
@@ -2073,6 +2184,11 @@ bool ScriptMgr::OnProcessEvent(uint32 eventId, Object* pSource, Object* pTarget,
 
 bool ScriptMgr::OnEffectDummy(WorldObject* pCaster, uint32 spellId, SpellEffectIndex effIndex, Creature* pTarget)
 {
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnCreatureDummyEffect(pCaster, spellId, effIndex, pTarget))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pTarget->GetScriptId()];
 
     if (!pTempScript || !pTempScript->pEffectDummyCreature)
@@ -2083,12 +2199,27 @@ bool ScriptMgr::OnEffectDummy(WorldObject* pCaster, uint32 spellId, SpellEffectI
 
 bool ScriptMgr::OnEffectDummy(WorldObject* pCaster, uint32 spellId, SpellEffectIndex effIndex, GameObject* pTarget)
 {
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnGameObjectDummyEffect(pCaster, spellId, effIndex, pTarget))
+        return true;
+#endif
+
     Script* pTempScript = m_NPC_scripts[pTarget->GetGOInfo()->ScriptId];
 
     if (!pTempScript || !pTempScript->pEffectDummyGameObj)
         return false;
 
     return pTempScript->pEffectDummyGameObj(pCaster, spellId, effIndex, pTarget);
+}
+
+bool ScriptMgr::OnEffectDummy(WorldObject* pCaster, uint32 spellId, SpellEffectIndex effIndex, Item* pTarget)
+{
+#ifdef USE_LUA
+    if (sTurtleLuaEngine.OnItemDummyEffect(pCaster, spellId, effIndex, pTarget))
+        return true;
+#endif
+
+    return false;
 }
 
 bool ScriptMgr::OnAuraDummy(Aura const* pAura, bool apply)

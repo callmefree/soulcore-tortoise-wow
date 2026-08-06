@@ -55,8 +55,9 @@
 #include "Unit.h"
 #include "MountManager.hpp"
 #include "CompanionManager.hpp"
-
-#include <memory>
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 using namespace Spells;
 
@@ -1656,6 +1657,10 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
         if (((Creature*)unit)->AI())
             ((Creature*)unit)->AI()->SpellHit(m_caster, m_spellInfo);
 
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnCreatureHitBySpell(unit->ToCreature(), m_caster, m_spellInfo->Id);
+#endif
+
         if (m_casterUnit)
         {
             if (ZoneScript* pZoneScript = unit->GetZoneScript())
@@ -1707,8 +1712,17 @@ void Spell::DoAllEffectOnTarget(TargetInfo *target)
     }
 
     // Call scripted function for AI if this spell is casted by a creature
-    if (m_caster->IsCreature() && ((Creature*)m_caster)->AI())
-        ((Creature*)m_caster)->AI()->SpellHitTarget(unit, m_spellInfo);
+    if (m_caster->IsCreature())
+    {
+        Creature* casterCreature = static_cast<Creature*>(m_caster);
+        bool skipSpellHitTargetAI = false;
+#ifdef USE_LUA
+        skipSpellHitTargetAI = sTurtleLuaEngine.OnCreatureSpellHitTarget(casterCreature, unit, m_spellInfo->Id);
+#endif
+
+        if (!skipSpellHitTargetAI && casterCreature->AI())
+            casterCreature->AI()->SpellHitTarget(unit, m_spellInfo);
+    }
 }
 
 void Spell::DoSpellHitOnUnit(Unit *unit, uint32 effectMask)
@@ -3603,6 +3617,10 @@ SpellCastResult Spell::prepare(Aura* triggeredByAura, uint32 chance)
         // set timer base at cast time
         ReSetTimer();
 
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnSpellPrepare(m_caster, this);
+#endif
+
         // If timer = 0, it's an instant cast spell and will be casted on the next tick.
         // Cast completion will remove all any stealth/invis auras
         if (m_timer)
@@ -3688,6 +3706,11 @@ void Spell::cancel()
 
     m_bIsBeingCancelled = true;
     m_autoRepeat = false;
+
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnSpellCastCancel(m_caster, this, false);
+#endif
+
     switch (m_spellState)
     {
         case SPELL_STATE_PREPARING:
@@ -3788,6 +3811,12 @@ void Spell::cast(bool skipCheck)
 
     // update pointers base at GUIDs to prevent access to already nonexistent object
     UpdatePointers();
+
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnSpellCast(m_caster, this, skipCheck);
+    if (Player* player = m_caster->ToPlayer())
+        sTurtleLuaEngine.OnPlayerSpellCast(player, this, skipCheck);
+#endif
 
     // cancel at lost main target unit
     if (!m_targets.getUnitTarget() && m_targets.getUnitTargetGuid() && m_targets.getUnitTargetGuid() != m_caster->GetObjectGuid())

@@ -15,6 +15,14 @@ DataDir = "../data"
 
 LogsDir = "../logs"
 
+# Eluna.Enabled. Enable Lua scripting compatibility layer.
+
+Eluna.Enabled = 1
+
+# Eluna.ScriptPath. Directory where Lua scripts are loaded from.
+
+Eluna.ScriptPath = "lua_scripts"
+
 # HonorDir. Folder to store HCR files. These are logs of weekly honor calculation.
 
 HonorDir = "../honor"

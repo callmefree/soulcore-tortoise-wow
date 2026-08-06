@@ -38,6 +38,9 @@
 #include "MapManager.h"
 #include "ObjectAccessor.h"
 #include "CreatureAI.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "TemporarySummon.h"
 #include "Formulas.h"
 #include "Pet.h"
@@ -791,6 +794,17 @@ uint32 Unit::DealDamage(Unit* pVictim, uint32 damage, CleanDamage const* cleanDa
         return 0;
     }
 
+#ifdef USE_LUA
+    if (Creature* creatureVictim = pVictim->ToCreature())
+    {
+        if (sTurtleLuaEngine.OnCreatureDamageTaken(creatureVictim, this, damage))
+            return 0;
+
+        if (!damage)
+            return 0;
+    }
+#endif
+
     if (!spellProto || !spellProto->IsAuraAddedBySpell(SPELL_AURA_MOD_FEAR))
     {
         if (!(IsCreature() && ((Creature*)this)->IsWorldBoss()))
@@ -1345,10 +1359,32 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
     if (pPlayerVictim && !damageFromSpiritOfRedemptionTalent)
         pPlayerVictim->SetPvPDeath(pPlayerTap != nullptr);
 
+#ifdef USE_LUA
+    if (pPlayerTap && pPlayerTap != pPlayerVictim)
+    {
+        if (pPlayerVictim)
+            sTurtleLuaEngine.OnPlayerKillPlayer(pPlayerTap, pPlayerVictim);
+        else if (pCreatureVictim)
+            sTurtleLuaEngine.OnPlayerKillCreature(pPlayerTap, pCreatureVictim);
+    }
+
+    if (pCreatureVictim && pPetKillOwner)
+        sTurtleLuaEngine.OnPlayerPetKill(pPetKillOwner, pCreatureVictim);
+
+    if (pPlayerVictim && !pPlayerTap)
+        if (Creature* creatureKiller = ToCreature())
+            sTurtleLuaEngine.OnPlayerKilledByCreature(creatureKiller, pPlayerVictim);
+#endif
+
     // Call KilledUnit for creatures
     if (Creature* pThisCreature = ToCreature())
+    {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnCreatureTargetDied(pThisCreature, pVictim);
+#endif
         if (pThisCreature->AI())
             pThisCreature->AI()->KilledUnit(pVictim);
+    }
 
     // Call AI OwnerKilledUnit (for any current summoned minipet/guardian/protector)
     if (pPlayerTap)
@@ -1405,19 +1441,37 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
         if (pCreatureVictim->AI())
             pCreatureVictim->AI()->JustDied(this);
 
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnCreatureDied(pCreatureVictim, this);
+#endif
+
         if (CreatureGroup* group = pCreatureVictim->GetCreatureGroup())
             group->OnMemberDied(pCreatureVictim);
 
         if (TemporarySummon* pSummon = pCreatureVictim->IsTemporarySummon() ? static_cast<TemporarySummon*>(pCreatureVictim) : nullptr)
         {
             if (pSummon->GetSummonerGuid().IsCreature())
+            {
                 if (Creature* pSummoner = pCreatureVictim->GetMap()->GetCreature(pSummon->GetSummonerGuid()))
-                    if (pSummoner->AI())
+                {
+#ifdef USE_LUA
+                    bool skipSummonerAI = sTurtleLuaEngine.OnCreatureSummonedCreatureDied(pSummoner, pCreatureVictim, this);
+#else
+                    bool skipSummonerAI = false;
+#endif
+                    if (!skipSummonerAI && pSummoner->AI())
                         pSummoner->AI()->SummonedCreatureJustDied(pCreatureVictim);
+                }
+            }
         }
         else if (Creature* pOwnerCreature = ::ToCreature(pVictim->GetCharmerOrOwner()))
         {
-            if (pOwnerCreature->AI())
+#ifdef USE_LUA
+            bool skipOwnerAI = sTurtleLuaEngine.OnCreatureSummonedCreatureDied(pOwnerCreature, pCreatureVictim, this);
+#else
+            bool skipOwnerAI = false;
+#endif
+            if (!skipOwnerAI && pOwnerCreature->AI())
                 pOwnerCreature->AI()->SummonedCreatureJustDied(pCreatureVictim);
         }
 
@@ -5136,6 +5190,12 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
             return false;
     }
 
+#ifdef USE_LUA
+    if (Creature* creature = ToCreature())
+        if (sTurtleLuaEngine.OnCreaturePreCombat(creature, victim))
+            return false;
+#endif
+
     // remove SPELL_AURA_MOD_UNATTACKABLE at attack (in case non-interruptible spells stun aura applied also that not let attack)
     if (HasAuraType(SPELL_AURA_MOD_UNATTACKABLE))
         RemoveSpellsCausingAura(SPELL_AURA_MOD_UNATTACKABLE);
@@ -5175,12 +5235,14 @@ bool Unit::Attack(Unit* victim, bool meleeAttack)
 
         if (Pet* pet = GetPet())
             if (pet->IsAlive())
-                pet->AI()->OwnerAttacked(victim);
+                if (!sTurtleLuaEngine.OnCreatureOwnerAttacked(pet, victim))
+                    pet->AI()->OwnerAttacked(victim);
 
         for (auto const& guid : m_guardianPets)
             if (Pet* pGuardian = GetMap()->GetPet(guid))
                 if (pGuardian->IsAlive())
-                    pGuardian->AI()->OwnerAttacked(victim);
+                    if (!sTurtleLuaEngine.OnCreatureOwnerAttacked(pGuardian, victim))
+                        pGuardian->AI()->OwnerAttacked(victim);
     }
 
     // delay offhand weapon attack to next attack time
@@ -5197,12 +5259,14 @@ void Unit::AttackedBy(Unit* attacker)
 {
     if (Pet* pet = GetPet())
         if (pet->IsAlive())
-            pet->AI()->OwnerAttackedBy(attacker);
+            if (!sTurtleLuaEngine.OnCreatureOwnerAttackedAt(pet, attacker))
+                pet->AI()->OwnerAttackedBy(attacker);
 
     for (auto const& guid : m_guardianPets)
         if (Creature* pGuardian = GetMap()->GetPet(guid))
             if (pGuardian->IsAlive())
-                pGuardian->AI()->OwnerAttackedBy(attacker);
+                if (!sTurtleLuaEngine.OnCreatureOwnerAttackedAt(pGuardian, attacker))
+                    pGuardian->AI()->OwnerAttackedBy(attacker);
 
     if (Creature* pCreature = ToCreature())
     {
@@ -6607,6 +6671,12 @@ void Unit::SetInCombatState(uint32 combatTimer, Unit* pEnemy)
                     if (spell->m_spellInfo->IsNonCombatSpell())
                         InterruptSpell(CurrentSpellTypes(i), false);
 
+#ifdef USE_LUA
+    if (!wasInCombat)
+        if (Player* player = ToPlayer())
+            sTurtleLuaEngine.OnPlayerEnterCombat(player, pEnemy);
+#endif
+
     if (creatureNotInCombat)
     {
         auto pCreature = ToCreature();
@@ -6742,12 +6812,14 @@ void Unit::SetInCombatWithVictim(Unit* pVictim, bool touchOnly/* = false*/, uint
             {
                 if (Pet* pet = GetPet())
                     if (!pet->HasFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PET_IN_COMBAT) && pet->IsAlive())
-                        pet->AI()->OwnerAttacked(pVictim);
+                        if (!sTurtleLuaEngine.OnCreatureOwnerAttacked(pet, pVictim))
+                            pet->AI()->OwnerAttacked(pVictim);
 
                 for (auto const& guid : m_guardianPets)
                     if (Pet* pGuardian = GetMap()->GetPet(guid))
                         if (pGuardian->IsAlive())
-                            pGuardian->AI()->OwnerAttacked(pVictim);
+                            if (!sTurtleLuaEngine.OnCreatureOwnerAttacked(pGuardian, pVictim))
+                                pGuardian->AI()->OwnerAttacked(pVictim);
             }
 
             if (Player* pOwner = ::ToPlayer(GetCharmerOrOwner()))
@@ -6773,6 +6845,12 @@ void Unit::ClearInCombat()
         static_cast<Player*>(this)->pvpInfo.inPvPCombat = false;
         static_cast<Player*>(this)->ClearTemporaryWarWithFactions();
     }
+
+#ifdef USE_LUA
+    if (wasInCombat)
+        if (Player* player = ToPlayer())
+            sTurtleLuaEngine.OnPlayerLeaveCombat(player);
+#endif
 }
 
 bool Unit::IsTargetable(bool forAttack, bool isAttackerPlayer, bool forAoE, bool checkAlive) const

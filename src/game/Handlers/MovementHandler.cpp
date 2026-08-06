@@ -25,6 +25,9 @@
 #include "Opcodes.h"
 #include "Log.h"
 #include "Player.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "MapManager.h"
 #include "Transport.h"
 #include "BattleGround.h"
@@ -148,6 +151,9 @@ void WorldSession::HandleMoveWorldportAckOpcode()
     }
 
     GetPlayer()->SendInitialPacketsAfterAddToMap();
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerMapChanged(GetPlayer());
+#endif
 
     // flight fast teleport case
     if (GetPlayer()->GetMotionMaster()->GetCurrentMovementGeneratorType() == FLIGHT_MOTION_TYPE)

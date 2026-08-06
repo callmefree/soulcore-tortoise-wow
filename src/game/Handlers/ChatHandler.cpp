@@ -27,6 +27,9 @@
 #include "Opcodes.h"
 #include "ObjectMgr.h"
 #include "Chat.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "Database/DatabaseEnv.h"
 #include "ChannelMgr.h"
 #include "Group.h"
@@ -343,6 +346,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
     if (msg.find("MR:") != std::string::npos || msg.find("TR:") != std::string::npos)
         lang = LANG_ADDON;
 
+#ifdef USE_LUA
+    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChat(GetPlayer(), type, lang, msg))
+        return;
+#endif
+
     if (type == CHAT_MSG_CHANNEL)
     {
         if (sWorld.getConfig(CONFIG_BOOL_SEA_NETWORK))
@@ -364,6 +372,61 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
         }
     }
+
+#ifdef USE_LUA
+    if (lang == LANG_ADDON)
+    {
+        Player* addonReceiver = nullptr;
+        Guild* addonGuild = nullptr;
+        Group* addonGroup = nullptr;
+        uint32 addonChannelId = 0;
+        bool hasAddonChannelTarget = false;
+
+        switch (type)
+        {
+            case CHAT_MSG_WHISPER:
+            {
+                std::string targetName = to;
+                if (normalizePlayerName(targetName))
+                    addonReceiver = sObjectMgr.GetPlayer(targetName.c_str());
+                break;
+            }
+            case CHAT_MSG_GUILD:
+            case CHAT_MSG_OFFICER:
+                if (GetMasterPlayer() && GetMasterPlayer()->GetGuildId())
+                    addonGuild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId());
+                break;
+            case CHAT_MSG_PARTY:
+            case CHAT_MSG_RAID:
+            case CHAT_MSG_RAID_LEADER:
+            case CHAT_MSG_RAID_WARNING:
+            case CHAT_MSG_BATTLEGROUND:
+            case CHAT_MSG_BATTLEGROUND_LEADER:
+                addonGroup = GetPlayer()->GetOriginalGroup();
+                if (!addonGroup)
+                    addonGroup = GetPlayer()->GetGroup();
+                break;
+            case CHAT_MSG_CHANNEL:
+            {
+                PlayerPointer playerPointer(GetPlayerPointer());
+                if (ChannelMgr* cMgr = channelMgr(playerPointer->GetTeam()))
+                {
+                    if (Channel* chn = cMgr->GetChannel(channel, playerPointer, false))
+                    {
+                        addonChannelId = chn->GetChannelId();
+                        hasAddonChannelTarget = true;
+                    }
+                }
+                break;
+            }
+            default:
+                break;
+        }
+
+        if (!sTurtleLuaEngine.OnAddonMessage(GetPlayer(), type, msg, addonReceiver, addonGuild, addonGroup, addonChannelId, hasAddonChannelTarget))
+            return;
+    }
+#endif
 
     if (HandleTurtleAddonMessages(lang, type, msg))
     {
@@ -405,6 +468,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             {
                 if (Channel *chn = cMgr->GetChannel(channel, playerPointer))
                 {
+#ifdef USE_LUA
+                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, chn))
+                        return;
+#endif
+
                     // Level channels restrictions
                     if (chn->IsLevelRestricted() && playerPointer->GetLevel() < sWorld.getConfig(CONFIG_UINT32_WORLD_CHAN_MIN_LEVEL)
                         && GetAccountMaxLevel() < sWorld.getConfig(CONFIG_UINT32_PUB_CHANS_MUTE_VANISH_LEVEL))
@@ -605,6 +673,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
 
             if (Player* toPlayer = player->GetSession()->GetPlayer())
             {
+#ifdef USE_LUA
+                if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerWhisper(GetPlayer(), type, lang, msg, toPlayer))
+                    return;
+#endif
+
                 bool allowIgnoreAntispam = toPlayer->IsAllowedWhisperFrom(masterPlr->GetObjectGuid());
                 bool allowSendWhisper = allowIgnoreAntispam;
                 if (!sWorld.getConfig(CONFIG_BOOL_WHISPER_RESTRICTION) || !toPlayer->IsEnabledWhisperRestriction())
@@ -637,6 +710,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                     return;
             }
 
+#ifdef USE_LUA
+            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+                return;
+#endif
+
             WorldPacket data;
             ChatHandler::BuildChatPacket(data, ChatMsg(type), msg.c_str(), Language(lang), _player->GetChatTag(), _player->GetObjectGuid(), _player->GetName());
 
@@ -650,6 +728,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
         {
             if (Guild* guild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId()))
             {
+#ifdef USE_LUA
+                if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
+                    return;
+#endif
+
                 guild->BroadcastToGuild(this, msg, lang == LANG_ADDON ? LANG_ADDON : LANG_UNIVERSAL);
             }
 
@@ -678,7 +761,14 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
         {
             if (GetMasterPlayer()->GetGuildId())
                 if (Guild* guild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId()))
+                {
+#ifdef USE_LUA
+                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
+                        return;
+#endif
+
                     guild->BroadcastToOfficers(this, msg, lang == LANG_ADDON ? LANG_ADDON : LANG_UNIVERSAL);
+                }
 
             if (lang != LANG_ADDON)
                 sWorld.LogChat(this, "Officer", msg, nullptr, GetMasterPlayer()->GetGuildId());
@@ -695,6 +785,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 if (!group || group->isBGGroup() || !group->isRaidGroup())
                     return;
             }
+
+#ifdef USE_LUA
+            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+                return;
+#endif
 
             WorldPacket data;
             ChatHandler::BuildChatPacket(data, CHAT_MSG_RAID, msg.c_str(), Language(lang), _player->GetChatTag(), _player->GetObjectGuid(), _player->GetName());
@@ -716,6 +811,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                     return;
             }
 
+#ifdef USE_LUA
+            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+                return;
+#endif
+
             WorldPacket data;
             ChatHandler::BuildChatPacket(data, CHAT_MSG_RAID_LEADER, msg.c_str(), Language(lang), _player->GetChatTag(), _player->GetObjectGuid(), _player->GetName());
             group->BroadcastPacket(&data, false);
@@ -731,6 +831,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             if (!group || !group->isRaidGroup() ||
                     !(group->IsLeader(GetPlayer()->GetObjectGuid()) || group->IsAssistant(GetPlayer()->GetObjectGuid())))
                 return;
+
+#ifdef USE_LUA
+            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+                return;
+#endif
 
             WorldPacket data;
             //in battleground, raid warning is sent only to players in battleground - code is ok
@@ -748,6 +853,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             Group *group = GetPlayer()->GetGroup();
             if (!group || !group->isBGGroup())
                 return;
+
+#ifdef USE_LUA
+            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+                return;
+#endif
 
             WorldPacket data;
             ChatHandler::BuildChatPacket(data, CHAT_MSG_BATTLEGROUND, msg.c_str(), Language(lang), _player->GetChatTag(), _player->GetObjectGuid(), _player->GetName());
@@ -771,6 +881,11 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             Group *group = GetPlayer()->GetGroup();
             if (!group || !group->isBGGroup() || !group->IsLeader(GetPlayer()->GetObjectGuid()))
                 return;
+
+#ifdef USE_LUA
+            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+                return;
+#endif
 
             WorldPacket data;
             ChatHandler::BuildChatPacket(data, CHAT_MSG_BATTLEGROUND_LEADER, msg.c_str(), Language(lang), _player->GetChatTag(), _player->GetObjectGuid(), _player->GetName());
@@ -855,6 +970,10 @@ void WorldSession::HandleEmoteOpcode(WorldPacket & recv_data)
     if (emote != EMOTE_ONESHOT_NONE && emote != EMOTE_ONESHOT_WAVE)
         return;
 
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerEmote(GetPlayer(), emote);
+#endif
+
     GetPlayer()->HandleEmoteCommand(emote);
 }
 
@@ -915,6 +1034,10 @@ void WorldSession::HandleTextEmoteOpcode(WorldPacket & recv_data)
     recv_data >> emoteNum;
     recv_data >> guid;
 
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerTextEmote(GetPlayer(), textEmote, emoteNum, guid);
+#endif
+
     EmotesTextEntry const* em = sEmotesTextStore.LookupEntry(textEmote);
     if (!em)
         return;
@@ -955,6 +1078,13 @@ void WorldSession::HandleTextEmoteOpcode(WorldPacket & recv_data)
     Cell::VisitWorldObjects(GetPlayer(), emote_worker,  sWorld.getConfig(CONFIG_FLOAT_LISTEN_RANGE_TEXTEMOTE));
 
     //Send scripted event call
+    if (unit && unit->IsCreature())
+    {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnCreatureReceiveEmote(unit->ToCreature(), GetPlayer(), textEmote);
+#endif
+    }
+
     if (unit && unit->IsCreature() && ((Creature*)unit)->AI())
         ((Creature*)unit)->AI()->ReceiveEmote(GetPlayer(), textEmote);
 }

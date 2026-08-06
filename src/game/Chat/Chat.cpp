@@ -38,6 +38,9 @@
 #include "PoolManager.h"
 #include "GameEventMgr.h"
 #include "HardcodedEvents.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 ChatCommand * ChatHandler::getCommandTable()
 {
@@ -1739,6 +1742,11 @@ bool ChatHandler::ParseCommands(const char* text)
     /// skip first . or ! (in console allowed use command with . and ! and without its)
     if (text[0] == '!' || text[0] == '.')
         ++text;
+
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCommand(m_session ? m_session->GetPlayer() : nullptr, text))
+        return true;
+#endif
 
     ExecuteCommand(text);
 

@@ -48,6 +48,9 @@
 #include "miscellaneous/feature_transmog.h"
 #include "Config.hpp"
 #include "Logging/DatabaseLogger.hpp"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 // config option SkipCinematics supported values
 enum CinematicsSkipMode
@@ -418,6 +421,9 @@ void WorldSession::HandleCharCreateOpcode(WorldPacket & recv_data)
     BASIC_LOG("Account: %d (IP: %s) Create Character:[%s] (guid: %u)", GetAccountId(), IP_str.c_str(), name.c_str(), pNewChar->GetGUIDLow());
     sLog.out(LOG_CHAR, "[%s:%u@%s] Create Character:[%s] (guid: %u)", GetUsername().c_str(), GetAccountId(), IP_str.c_str(), name.c_str(), pNewChar->GetGUIDLow());
     sDBLogger.LogCharAction({ pNewChar->GetGUIDLow(), GetAccountId(), LogCharAction::ActionCreate, {} });
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerCharacterCreate(pNewChar.get());
+#endif
     sObjectMgr.IncreaseActivePlayersCount(team);
 }
 
@@ -479,6 +485,10 @@ void WorldSession::HandleCharDeleteOpcode(WorldPacket & recv_data)
     // If the character is online (ALT-F4 logout for example)
     if (Player* onlinePlayer = sObjectAccessor.FindPlayer(guid))
         onlinePlayer->GetSession()->LogoutPlayer(true);
+
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerCharacterDelete(lowguid);
+#endif
 
     Player::DeleteFromDB(guid, GetAccountId());
 
@@ -896,6 +906,9 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 
     if (pCurrChar->HasAtLoginFlag(AT_LOGIN_FIRST))
     {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnPlayerFirstLogin(pCurrChar);
+#endif
         pCurrChar->RemoveAtLoginFlag(AT_LOGIN_FIRST);
     }
 
@@ -1003,6 +1016,9 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 
 
     ALL_SESSION_SCRIPTS(this, OnLogin(pCurrChar));
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerLogin(pCurrChar);
+#endif
 }
 
 void WorldSession::HandleSetFactionAtWarOpcode(WorldPacket & recv_data)

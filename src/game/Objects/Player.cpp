@@ -22,9 +22,13 @@
 #include <unordered_map>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <ctime>
 
 #include "Player.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "Language.h"
 #include "Database/DatabaseEnv.h"
 #include "Log.h"
@@ -2545,6 +2549,9 @@ bool Player::SwitchInstance(uint32 newInstanceId)
 
     ASSERT(newmap->Add(this));
     SendInitialPacketsAfterAddToMap(false);
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerMapChanged(this);
+#endif
     ResummonPetTemporaryUnSummonedIfAny();
     ProcessDelayedOperations();
     return true;
@@ -3578,6 +3585,12 @@ void Player::GiveXP(uint32 xp, Unit* victim)
     if (xp < 1)
         return;
 
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerGiveXP(this, xp, victim, 0);
+    if (xp < 1)
+        return;
+#endif
+
     if (xp > 100000)
     {
         sLog.out(LOG_LEVELUP, "Character %s has attempted to get %u amount of experience.", GetName(), xp);
@@ -3669,6 +3682,10 @@ void Player::GiveLevel(uint32 level)
 {
     if (level == GetLevel())
         return;
+
+#ifdef USE_LUA
+    uint32 oldLevel = GetLevel();
+#endif
 
     uint32 numInstanceMembers = 0;
     uint32 numGroupMembers = 0;
@@ -3914,6 +3931,10 @@ void Player::GiveLevel(uint32 level)
 
     CheckInfernoInvite();
 
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerLevelChange(this, oldLevel);
+#endif
+
     if (m_session->ShouldBeBanned(GetLevel()))
         sWorld.BanAccount(BAN_ACCOUNT, m_session->GetUsername(), 0, m_session->GetScheduleBanReason(), "");
 }
@@ -3948,6 +3969,14 @@ void Player::UpdateFreeTalentPoints(bool resetIfNeed)
         else
             SetFreeTalentPoints(talentPointsForLevel - m_usedTalentCount);
     }
+}
+
+void Player::SetFreeTalentPoints(uint32 points)
+{
+    SetUInt32Value(PLAYER_CHARACTER_POINTS1, points);
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerTalentsChange(this, points);
+#endif
 }
 
 void Player::InitTalentForLevel()
@@ -4493,6 +4522,9 @@ void Player::LearnSpell(uint32 spell_id, bool dependent, bool talent)
         WorldPacket data(SMSG_LEARNED_SPELL, 4);
         data << uint32(spell_id);
         GetSession()->SendPacket(&data);
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnPlayerLearnSpell(this, spell_id);
+#endif
     }
 
     // learn all disabled higher ranks (recursive) - skip for talent spells
@@ -4980,6 +5012,10 @@ bool Player::ResetTalents(bool no_cost)
 
     //FIXME: Remove pet before or after unlearn spells? for now after unlearn to allow removing of talent related, pet affecting auras
     RemovePet(PET_SAVE_REAGENTS);
+
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerTalentsReset(this, no_cost);
+#endif
 
     return true;
 }
@@ -5703,6 +5739,10 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness, bool for
     if (IsHardcore() && !forceHc)
         return;
 
+#ifdef USE_LUA
+    bool wasDead = !IsAlive();
+#endif
+
     // Interrupt resurrect spells
     InterruptSpellsCastedOnMe(false, true);
 
@@ -5738,6 +5778,11 @@ void Player::ResurrectPlayer(float restore_percent, bool applySickness, bool for
     m_camera.UpdateVisibilityForOwner();
     // update visibility of player for nearby cameras
     UpdateObjectVisibility();
+
+#ifdef USE_LUA
+    if (wasDead)
+        sTurtleLuaEngine.OnPlayerResurrect(this);
+#endif
 
     if (!applySickness)
         return;
@@ -6343,6 +6388,10 @@ void Player::RepopAtGraveyard()
     // note: this can be called also when the player is alive
     // for example from WorldSession::HandleMovementOpcodes
 
+#ifdef USE_LUA
+    bool wasDead = !IsAlive();
+#endif
+
     m_repopAtGraveyardPending = false;
     WorldSafeLocsEntry const *ClosestGrave = nullptr;
 
@@ -6391,6 +6440,11 @@ void Player::RepopAtGraveyard()
         if (IsInWorld())
             UpdateVisibilityAndView();
     }
+
+#ifdef USE_LUA
+    if (wasDead)
+        sTurtleLuaEngine.OnPlayerRepop(this);
+#endif
 }
 
 void Player::JoinedChannel(Channel *c)
@@ -6667,6 +6721,11 @@ bool Player::UpdateSkill(uint32 skill_id, uint32 step)
     if (!skill_id)
         return false;
 
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCanUpdateSkill(this, skill_id))
+        return false;
+#endif
+
     SkillStatusMap::iterator itr = mSkillStatus.find(skill_id);
     if (itr == mSkillStatus.end() || itr->second.uState == SKILL_DELETED)
         return false;
@@ -6675,6 +6734,10 @@ bool Player::UpdateSkill(uint32 skill_id, uint32 step)
     uint32 data = GetUInt32Value(valueIndex);
     uint32 value = SKILL_VALUE(data);
     uint32 max = SKILL_MAX(data);
+
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerBeforeUpdateSkill(this, skill_id, value, max, step);
+#endif
 
     if ((!max) || (!value) || (value >= max))
         return false;
@@ -6688,6 +6751,10 @@ bool Player::UpdateSkill(uint32 skill_id, uint32 step)
 
     if (itr->second.uState != SKILL_NEW)
         itr->second.uState = SKILL_CHANGED;
+
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerUpdateSkill(this, skill_id, value, max, step, new_value);
+#endif
 
     return true;
 }
@@ -6773,6 +6840,11 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
     if (!SkillId)
         return false;
 
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerCanUpdateSkill(this, SkillId))
+        return false;
+#endif
+
     if (Chance <= 0)                                        // speedup in 0 chance case
     {
         DEBUG_LOG("Player::UpdateSkillPro Chance=%3.1f%% missed", Chance / 10.0);
@@ -6789,6 +6861,12 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
     uint16 SkillValue = SKILL_VALUE(data);
     uint16 MaxValue   = SKILL_MAX(data);
 
+#ifdef USE_LUA
+    uint32 luaSkillValue = SkillValue;
+    sTurtleLuaEngine.OnPlayerBeforeUpdateSkill(this, SkillId, luaSkillValue, MaxValue, step);
+    SkillValue = luaSkillValue > std::numeric_limits<uint16>::max() ? std::numeric_limits<uint16>::max() : static_cast<uint16>(luaSkillValue);
+#endif
+
     if (!MaxValue || !SkillValue || SkillValue >= MaxValue)
         return false;
 
@@ -6804,6 +6882,9 @@ bool Player::UpdateSkillPro(uint16 SkillId, int32 Chance, uint32 step)
         if (itr->second.uState != SKILL_NEW)
             itr->second.uState = SKILL_CHANGED;
         DEBUG_LOG("Player::UpdateSkillPro Chance=%3.1f%% taken", Chance / 10.0);
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnPlayerUpdateSkill(this, SkillId, SkillValue, MaxValue, step, new_value);
+#endif
         return true;
     }
 
@@ -8004,6 +8085,13 @@ void Player::SetTransport(Transport* t)
 
 void Player::UpdateArea(uint32 newArea)
 {
+    uint32 oldArea = m_areaUpdateId;
+
+#ifdef USE_LUA
+    if (oldArea != newArea)
+        sTurtleLuaEngine.OnPlayerUpdateArea(this, oldArea, newArea);
+#endif
+
     m_areaUpdateId    = newArea;
 
     DismountCheck();
@@ -8064,6 +8152,11 @@ void Player::UpdateZone(uint32 newZone, uint32 newArea)
 
     // zone changed, so area changed as well, update it
     UpdateArea(newArea);
+
+#ifdef USE_LUA
+    if (oldZoneId != newZone)
+        sTurtleLuaEngine.OnPlayerUpdateZone(this, newZone, newArea);
+#endif
 
     // in PvP, any not controlled zone (except zone->team == 6, default case)
     // in PvE, only opposition team capital
@@ -8178,6 +8271,10 @@ void Player::DuelComplete(DuelCompleteType type)
     Player* pOpponent = sObjectAccessor.FindPlayer(m_duel->opponent);
     if (pOpponent)
     {
+#ifdef USE_LUA
+        sTurtleLuaEngine.OnPlayerDuelEnd(pOpponent, this, static_cast<uint32>(type));
+#endif
+
         WorldPacket data(SMSG_DUEL_COMPLETE, (1));
         data << (uint8)((type != DUEL_INTERRUPTED) ? 1 : 0);
         GetSession()->SendPacket(&data);
@@ -11958,6 +12055,15 @@ InventoryResult Player::CanUseItem(ItemPrototype const *pProto, bool not_loading
                 return EQUIP_ERR_NO_REQUIRED_PROFICIENCY;
         }
 
+#ifdef USE_LUA
+        if (not_loading && IsInWorld())
+        {
+            InventoryResult luaResult = static_cast<InventoryResult>(sTurtleLuaEngine.OnPlayerCanUseItem(this, pProto->ItemId));
+            if (luaResult != EQUIP_ERR_OK)
+                return luaResult;
+        }
+#endif
+
         return EQUIP_ERR_OK;
     }
 
@@ -12035,6 +12141,13 @@ Item* Player::StoreNewItem(ItemPosCountVec const& dest, uint32 item, bool update
         if (randomPropertyId)
             pItem->SetItemRandomProperties(randomPropertyId);
         pItem = StoreItem(dest, pItem, update);
+#ifdef USE_LUA
+        if (pItem && IsInWorld())
+        {
+            sTurtleLuaEngine.OnPlayerCreateItem(this, pItem, count);
+            sTurtleLuaEngine.OnPlayerStoreNewItem(this, pItem, count);
+        }
+#endif
     }
     return pItem;
 }
@@ -12187,7 +12300,12 @@ Item* Player::EquipNewItem(uint16 pos, uint32 item, bool update)
     if (Item *pItem = Item::CreateItem(item, 1, this))
     {
         ItemAddedQuestCheck(item, 1);
-        return EquipItem(pos, pItem, update);
+        Item* equippedItem = EquipItem(pos, pItem, update);
+#ifdef USE_LUA
+        if (equippedItem && IsInWorld())
+            sTurtleLuaEngine.OnPlayerCreateItem(this, equippedItem, 1);
+#endif
+        return equippedItem;
     }
 
     return nullptr;
@@ -12278,10 +12396,20 @@ Item* Player::EquipItem(uint16 pos, Item *pItem, bool update)
 
         ApplyEquipCooldown(pItem2);
 
+#ifdef USE_LUA
+        if (IsInWorld() && update)
+            sTurtleLuaEngine.OnPlayerEquip(this, pItem2, bag, slot);
+#endif
+
         return pItem2;
     }
     if (pItem->GetEntry() == 17182)
         AwardTitle(TITLE_SULFURON_CHAMPION); // Sulfuron Champion
+
+#ifdef USE_LUA
+    if (IsInWorld() && update)
+        sTurtleLuaEngine.OnPlayerEquip(this, pItem, bag, slot);
+#endif
 
     return pItem;
 }
@@ -14860,6 +14988,9 @@ void Player::CompleteQuest(uint32 quest_id)
         {
             if (qInfo->HasQuestFlag(QUEST_FLAGS_AUTO_REWARDED))
                 RewardQuest(qInfo, 0, this, false);
+#ifdef USE_LUA
+            sTurtleLuaEngine.OnPlayerCompleteQuest(this, qInfo);
+#endif
         }
     }
 }
@@ -14943,6 +15074,10 @@ void Player::RewardQuest(Quest const *pQuest, uint32 reward, WorldObject* questE
             {
                 Item* item = StoreNewItem(dest, itemId, true, Item::GenerateItemRandomPropertyId(itemId));
                 SendNewItem(item, pQuest->RewChoiceItemCount[reward], true, false, false, false);
+#ifdef USE_LUA
+                if (item)
+                    sTurtleLuaEngine.OnPlayerQuestRewardItem(this, item, pQuest->RewChoiceItemCount[reward]);
+#endif
             }
         }
     }
@@ -14958,6 +15093,10 @@ void Player::RewardQuest(Quest const *pQuest, uint32 reward, WorldObject* questE
                 {
                     Item* item = StoreNewItem(dest, itemId, true, Item::GenerateItemRandomPropertyId(itemId));
                     SendNewItem(item, pQuest->RewItemCount[i], true, false, false, false);
+#ifdef USE_LUA
+                    if (item)
+                        sTurtleLuaEngine.OnPlayerQuestRewardItem(this, item, pQuest->RewItemCount[i]);
+#endif
                 }
             }
         }
@@ -16023,6 +16162,49 @@ void Player::TalkedToCreature(uint32 entry, ObjectGuid guid)
             }
         }
     }
+}
+
+void Player::ModifyMoney(int32 d)
+{
+    if (d < 0)
+        SetMoney(GetMoney() > uint32(-d) ? GetMoney() + d : 0);
+    else
+        SetMoney(GetMoney() < uint32(MAX_MONEY_AMOUNT - d) ? GetMoney() + d : MAX_MONEY_AMOUNT);
+}
+
+void Player::SetMoney(uint32 value)
+{
+#ifdef USE_LUA
+    static thread_local bool luaMoneyHookActive = false;
+    if (!luaMoneyHookActive)
+    {
+        uint32 oldMoney = GetMoney();
+        if (oldMoney != value)
+        {
+            int64 delta = static_cast<int64>(value) - static_cast<int64>(oldMoney);
+            if (delta > std::numeric_limits<int32>::max())
+                delta = std::numeric_limits<int32>::max();
+            else if (delta < std::numeric_limits<int32>::min())
+                delta = std::numeric_limits<int32>::min();
+
+            int32 amount = static_cast<int32>(delta);
+            luaMoneyHookActive = true;
+            sTurtleLuaEngine.OnPlayerMoneyChange(this, amount);
+            luaMoneyHookActive = false;
+
+            int64 hookedValue = static_cast<int64>(oldMoney) + amount;
+            if (hookedValue < 0)
+                value = 0;
+            else if (hookedValue > MAX_MONEY_AMOUNT)
+                value = MAX_MONEY_AMOUNT;
+            else
+                value = static_cast<uint32>(hookedValue);
+        }
+    }
+#endif
+
+    SetUInt32Value(PLAYER_FIELD_COINAGE, value);
+    MoneyChanged(value);
 }
 
 void Player::LogModifyMoney(int32 d, const char* type, ObjectGuid fromGuid, uint32 data)
@@ -17801,8 +17983,13 @@ InstancePlayerBind* Player::BindToInstance(DungeonPersistentState *state, bool p
         bind.state = state;
         bind.perm = permanent;
         if (!load)
+        {
             DEBUG_LOG("Player::BindToInstance: %s(%d) is now bound to map %d, instance %d",
                       GetName(), GetGUIDLow(), state->GetMapId(), state->GetInstanceId());
+#ifdef USE_LUA
+            sTurtleLuaEngine.OnPlayerBindToInstance(this, 0, state->GetMapId(), permanent);
+#endif
+        }
         return &bind;
     }
     else
@@ -18048,6 +18235,16 @@ bool Player::SaveToDB(bool online, bool force, bool direct)
         ScheduleDelayedOperation(DELAYED_SAVE_PLAYER);
         return false;
     }
+
+#ifdef USE_LUA
+    static thread_local bool luaPlayerSaveHookActive = false;
+    if (!luaPlayerSaveHookActive)
+    {
+        luaPlayerSaveHookActive = true;
+        sTurtleLuaEngine.OnPlayerSave(this);
+        luaPlayerSaveHookActive = false;
+    }
+#endif
 
     if (!CharacterDatabase.BeginTransaction(GetGUIDLow()))
         return false;
@@ -18936,10 +19133,18 @@ void Player::UpdatePvPContestedFlagTimer(uint32 diff)
 
 void Player::SetFFAPvP(bool state)
 {
+    bool wasFfaPvp = IsFFAPvP();
+
     if (state)
         SetFlag(PLAYER_FLAGS, PLAYER_FLAGS_FFA_PVP);
     else
         RemoveFlag(PLAYER_FLAGS, PLAYER_FLAGS_FFA_PVP);
+
+#ifdef USE_LUA
+    bool hasFfaPvp = IsFFAPvP();
+    if (wasFfaPvp != hasFfaPvp && IsInWorld())
+        sTurtleLuaEngine.OnPlayerFFAPvPChange(this, hasFfaPvp);
+#endif
 
     if (GetGroup())
         SetGroupUpdateFlag(GROUP_UPDATE_FLAG_STATUS);
@@ -18972,6 +19177,11 @@ void Player::UpdateDuelFlag(time_t currTime)
             pOpponent->m_duel->startTimer = 0;
             pOpponent->m_duel->startTime = currTime;
         }
+#ifdef USE_LUA
+        Player* starter = m_duel->initiator ? m_duel->initiator : this;
+        Player* challenger = starter == this ? pOpponent : this;
+        sTurtleLuaEngine.OnPlayerDuelStart(starter, challenger);
+#endif
     } 
 }
 
@@ -20480,6 +20690,9 @@ void Player::LeaveBattleground(bool teleportToEntryPoint)
                 (bg->GetStatus() == STATUS_IN_PROGRESS || bg->GetStatus() == STATUS_WAIT_JOIN)
                 )
         {
+#ifdef USE_LUA
+            sTurtleLuaEngine.OnPlayerBGDesertion(this, bg->IsArena() ? 5 : 0);
+#endif
             //lets check if player was teleported from BG and schedule delayed Deserter spell cast
             if (IsBeingTeleportedFar())
                 ScheduleDelayedOperation(DELAYED_SPELL_CAST_DESERTER);
@@ -22277,6 +22490,10 @@ void Player::AutoStoreLoot(Loot& loot, bool broadcast, uint8 bag, uint8 slot)
         SendNotifyLootItemRemoved(i);
         Item* pItem = StoreNewItem(dest, lootItem->itemid, true, lootItem->randomPropertyId);
         SendNewItem(pItem, lootItem->count, false, false, broadcast);
+#ifdef USE_LUA
+        WorldObject const* target = loot.GetLootTarget();
+        sTurtleLuaEngine.OnPlayerLootItem(this, pItem, lootItem->count, target ? target->GetObjectGuid() : ObjectGuid());
+#endif
     }
 }
 
@@ -22692,6 +22909,9 @@ void Player::LearnTalent(uint32 talentId, uint32 talentRank)
     // learn! (other talent ranks will unlearned at learning)
     LearnSpell(spellid, false, true);
     DETAIL_LOG("TalentID: %u Rank: %u Spell: %u\n", talentId, talentRank, spellid);
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerLearnTalents(this, talentId, talentRank, spellid);
+#endif
 }
 
 void Player::UnsummonPetTemporaryIfAny()
@@ -23846,6 +24066,10 @@ void Player::LootMoney(int32 money, Loot* loot)
     }
 
     LogModifyMoney(money, "Loot", target ? target->GetObjectGuid() : ObjectGuid());
+#ifdef USE_LUA
+    if (money > 0)
+        sTurtleLuaEngine.OnPlayerLootMoney(this, static_cast<uint32>(money));
+#endif
 }
 
 void Player::RewardHonor(Unit* uVictim, uint32 groupSize)

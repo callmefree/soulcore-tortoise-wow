@@ -31,6 +31,9 @@
 #include "TemporarySummon.h"
 #include "GameObjectAI.h"
 #include "Geometry.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 //-----------------------------------------------//
 template<class T, typename D>
@@ -550,8 +553,14 @@ void ChaseMovementGenerator<Creature>::MovementInform(Creature& unit)
         return;
 
     // Pass back the GUIDLow of the target. If it is pet's owner then PetAI will handle
-    if (unit.AI())
-        unit.AI()->MovementInform(CHASE_MOTION_TYPE, i_target.getTarget()->GetGUIDLow());
+    uint32 targetGuidLow = i_target.getTarget()->GetGUIDLow();
+    bool skipMovementInform = false;
+#ifdef USE_LUA
+    skipMovementInform = sTurtleLuaEngine.OnCreatureReachWP(&unit, CHASE_MOTION_TYPE, targetGuidLow);
+#endif
+
+    if (!skipMovementInform && unit.AI())
+        unit.AI()->MovementInform(CHASE_MOTION_TYPE, targetGuidLow);
 
     if (unit.IsTemporarySummon())
     {
@@ -743,8 +752,14 @@ void FollowMovementGenerator<Creature>::MovementInform(Creature& unit)
         return;
 
     // Pass back the GUIDLow of the target. If it is pet's owner then PetAI will handle
-    if (unit.AI())
-        unit.AI()->MovementInform(FOLLOW_MOTION_TYPE, i_target.getTarget()->GetGUIDLow());
+    uint32 targetGuidLow = i_target.getTarget()->GetGUIDLow();
+    bool skipMovementInform = false;
+#ifdef USE_LUA
+    skipMovementInform = sTurtleLuaEngine.OnCreatureReachWP(&unit, FOLLOW_MOTION_TYPE, targetGuidLow);
+#endif
+
+    if (!skipMovementInform && unit.AI())
+        unit.AI()->MovementInform(FOLLOW_MOTION_TYPE, targetGuidLow);
 
     if (unit.IsTemporarySummon())
     {

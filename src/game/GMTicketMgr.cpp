@@ -18,6 +18,7 @@
 
 #include "Common.h"
 #include "GMTicketMgr.h"
+#include "TurtleLuaEngine.h"
 #include "Database/DatabaseEnv.h"
 #include "Log.h"
 #include "Language.h"
@@ -395,6 +396,7 @@ void TicketMgr::AddTicket(GmTicket&& ticket)
     if (!ticket.IsClosed())
         ++_openTicketCount;
     ticket.SaveToDB();
+    sTurtleLuaEngine.OnTicketCreate(elem.get());
 }
 
 void TicketMgr::CloseTicket(uint32 ticketId, ObjectGuid source)
@@ -402,6 +404,7 @@ void TicketMgr::CloseTicket(uint32 ticketId, ObjectGuid source)
     if (GmTicket* ticket = GetTicket(ticketId))
     {
         ticket->SetClosedBy(source);
+        sTurtleLuaEngine.OnTicketClose(ticket);
         if (source)
             --_openTicketCount;
         _accountTicketList.erase(ticket->GetCreatorLowGuid());

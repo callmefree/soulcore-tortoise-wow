@@ -22,6 +22,9 @@
 #include "ReputationMgr.h"
 #include "DBCStores.h"
 #include "Player.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "WorldPacket.h"
 #include "ObjectMgr.h"
 #include <numeric>
@@ -285,6 +288,11 @@ bool ReputationMgr::SetReputation(FactionEntry const* factionEntry, int32 standi
 {
     if (!factionEntry)
         return false;
+
+#ifdef USE_LUA
+    if (!sTurtleLuaEngine.OnPlayerReputationChange(m_player, factionEntry->ID, standing, incremental))
+        return false;
+#endif
 
     if (!noSpillover)
     {

@@ -32,6 +32,9 @@
 #include "ObjectAccessor.h"
 #include "ScriptMgr.h"
 #include "Group.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 void WorldSession::HandleQuestgiverStatusQueryOpcode(WorldPacket & recv_data)
 {
@@ -528,6 +531,10 @@ void WorldSession::HandleQuestLogRemoveQuest(WorldPacket& recv_data)
         }
 
         _player->SetQuestSlot(slot, 0);
+#ifdef USE_LUA
+        if (quest)
+            sTurtleLuaEngine.OnPlayerQuestAbandon(_player, quest);
+#endif
     }
 }
 

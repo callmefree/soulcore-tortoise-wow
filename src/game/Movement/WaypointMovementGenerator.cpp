@@ -28,6 +28,9 @@
 #include "MoveSplineInit.h"
 #include "MoveSpline.h"
 #include "CreatureGroups.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 #include <cassert>
 
@@ -155,7 +158,12 @@ bool WaypointMovementGenerator<Creature>::OnArrived(Creature& creature)
     }
 
     // Inform script
-    if (creature.AI())
+    bool skipMovementInform = false;
+#ifdef USE_LUA
+    skipMovementInform = sTurtleLuaEngine.OnCreatureReachWP(&creature, WAYPOINT_MOTION_TYPE, i_currentNode);
+#endif
+
+    if (!skipMovementInform && creature.AI())
         creature.AI()->MovementInform(WAYPOINT_MOTION_TYPE, i_currentNode);
 
     // Save last reached point in group in case of leader change

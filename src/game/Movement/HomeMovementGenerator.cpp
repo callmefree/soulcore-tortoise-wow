@@ -23,6 +23,9 @@
 #include "WorldPacket.h"
 #include "MoveSplineInit.h"
 #include "MoveSpline.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 void HomeMovementGenerator<Creature>::Initialize(Creature & owner)
 {
@@ -88,6 +91,10 @@ void HomeMovementGenerator<Creature>::Finalize(Creature& owner)
 
         owner.SetWalk(!owner.HasUnitState(UNIT_STAT_RUNNING) && !owner.IsLevitating(), false);
         owner.LoadCreatureAddon(true);
+#ifdef USE_LUA
+        if (sTurtleLuaEngine.OnCreatureReachHome(&owner))
+            return;
+#endif
         owner.AI()->JustReachedHome();
     }
 }

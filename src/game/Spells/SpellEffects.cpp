@@ -60,6 +60,9 @@
 #include "CompanionManager.hpp"
 #include "MountManager.hpp"
 #include "ToyManager.hpp"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 #include "InstanceData.h"
 #include "ScriptMgr.h"
@@ -1882,10 +1885,30 @@ void Spell::SendLoot(ObjectGuid guid, LootType loottype, LockType lockType)
                     gameObjTarget->SetLootState(GO_JUST_DEACTIVATED);
                     return;
                 }
+                else if ((m_spellInfo->Id == 15748) || (m_spellInfo->Id == 16028)) // Freeze Rookery Egg
+                {
+                    if (gameObjTarget->getLootState() == GO_READY)
+                    {
+#ifdef USE_LUA
+                        sTurtleLuaEngine.OnGameObjectDamaged(gameObjTarget, m_caster);
+#endif
+                        gameObjTarget->UseDoorOrButton(0, true);
+#ifdef USE_LUA
+                        sTurtleLuaEngine.OnGameObjectDestroyed(gameObjTarget, m_caster);
+#endif
+                    }
+                    return;
+                }
                 else if (gameObjTarget->GetEntry() == 178559) // Larva Spewer
                 {
                     // Alternative state = destroyed
+#ifdef USE_LUA
+                    sTurtleLuaEngine.OnGameObjectDamaged(gameObjTarget, m_caster);
+#endif
                     gameObjTarget->SetGoState(GO_STATE_ACTIVE_ALTERNATIVE);
+#ifdef USE_LUA
+                    sTurtleLuaEngine.OnGameObjectDestroyed(gameObjTarget, m_caster);
+#endif
                     // Save state
                     if (gameObjTarget->GetInstanceData())
                         gameObjTarget->GetInstanceData()->SetData(0 /*TYPE_LARVA_SPEWER*/, 3 /*DONE*/);
@@ -4272,6 +4295,9 @@ void Spell::EffectDuel(SpellEffectIndex eff_idx)
 
     caster->SetGuidValue(PLAYER_DUEL_ARBITER, pGameObj->GetObjectGuid());
     target->SetGuidValue(PLAYER_DUEL_ARBITER, pGameObj->GetObjectGuid());
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnPlayerDuelRequest(target, caster);
+#endif
 }
 
 void Spell::EffectStuck(SpellEffectIndex /*eff_idx*/)
@@ -4372,8 +4398,19 @@ void Spell::EffectActivateObject(SpellEffectIndex eff_idx)
             // No use cases, implementation unknown
             break;
         case GameObjectActions::Destroy:
+        {
+#ifdef USE_LUA
+            bool canDestroy = gameObjTarget->getLootState() == GO_READY || gameObjTarget->getLootState() == GO_NOT_READY;
+            if (canDestroy)
+                sTurtleLuaEngine.OnGameObjectDamaged(gameObjTarget, m_caster);
+#endif
             gameObjTarget->UseDoorOrButton(0, true);
+#ifdef USE_LUA
+            if (canDestroy)
+                sTurtleLuaEngine.OnGameObjectDestroyed(gameObjTarget, m_caster);
+#endif
             break;
+        }
         case GameObjectActions::Rebuild:
             gameObjTarget->ResetDoorOrButton();
             break;

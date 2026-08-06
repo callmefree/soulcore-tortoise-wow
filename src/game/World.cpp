@@ -47,6 +47,9 @@
 #include "ItemEnchantmentMgr.h"
 #include "MapManager.h"
 #include "ScriptMgr.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 #include "CreatureAIRegistry.h"
 #include "Policies/SingletonImp.h"
 #include "BattleGroundMgr.h"
@@ -196,6 +199,9 @@ void World::Shutdown()
 	sGuildMgr.SaveGuildBanks();
     sWorld.KickAll();                                       // save and kick all players
     sWorld.UpdateSessions(1);                               // real players unload required UpdateSessions call
+#ifdef USE_LUA
+    sTurtleLuaEngine.Shutdown();
+#endif
     if (m_charDbWorkerThread && m_charDbWorkerThread->joinable())
         m_charDbWorkerThread->join();
 }
@@ -861,6 +867,9 @@ void World::LoadConfigSettings(bool reload)
     LoadConfigSettingsFromFile();
 
     LoadConfigSettingsCommonPart(reload);
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnConfigLoad(reload);
+#endif
 }
 
 bool World::LoadConfigSettingsFromDB(bool reload)
@@ -2261,6 +2270,10 @@ void LoadPlayerEggLoot();
     sObjectMgr.LoadSpellDisabledEntrys();
     sLog.outString("Loading anticheat...");
     sAnticheatLib->Initialize();
+#ifdef USE_LUA
+    sLog.outString("Loading Lua engine...");
+    sTurtleLuaEngine.Initialize();
+#endif
     sLog.outString("Loading autobroadcat...");
 	sAutoBroadCastMgr.Load();
     sLog.outString("Loading player phasing...");
@@ -2453,6 +2466,9 @@ void TotalMoneyCallback(QueryResult* result, uint32 money)
 void World::Update(uint32 diff)
 {
     XScopeStatTimer ScopeStatTimer(sPerfMonitor.WorldTick);
+#ifdef USE_LUA
+    sTurtleLuaEngine.Update(diff);
+#endif
     ///- Update the different timers
     for (auto& timer : m_timers)
     {
@@ -3220,6 +3236,9 @@ void World::ShutdownServ(uint32 time, uint32 options, uint8 exitcode)
 
     m_ShutdownMask = options;
     m_ExitCode = exitcode;
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnShutdownInit(exitcode, options);
+#endif
 
     ///- If the shutdown time is 0, set m_stopEvent (except if shutdown is 'idle' with remaining sessions)
     if (time == 0)
@@ -3280,6 +3299,9 @@ void World::ShutdownCancel()
     m_ShutdownTimer = 0;
     m_ExitCode = SHUTDOWN_EXIT_CODE;                       // to default value
     SendServerMessage(msgid);
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnShutdownCancel();
+#endif
 
     DEBUG_LOG("Server %s cancelled.", (m_ShutdownMask & SHUTDOWN_MASK_RESTART ? "restart" : "shutdown"));
 }

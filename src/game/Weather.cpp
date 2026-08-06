@@ -31,6 +31,9 @@
 #include "WorldPacket.h"
 #include "Log.h"
 #include "Util.h"
+#ifdef USE_LUA
+#include "TurtleLuaEngine.h"
+#endif
 
 WeatherMgr sWeatherMgr;
 
@@ -237,6 +240,9 @@ bool Weather::SendWeatherForPlayersInZone(Map const* _map)
 
     ///- Log the event
     LogWeatherState(GetWeatherState());
+#ifdef USE_LUA
+    sTurtleLuaEngine.OnWeatherChange(m_zone, GetWeatherState(), m_grade);
+#endif
 
     return true;
 }
