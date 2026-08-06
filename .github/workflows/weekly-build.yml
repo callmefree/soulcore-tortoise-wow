@@ -101,8 +101,7 @@ jobs:
       - name: Install ACE
         shell: pwsh
         run: |
-          # ACE 8.x 的 ~ACE_Cleanup()=default 与 MSVC 组合触发 C2694, pin 7.1.4(旧 workflow 同版本)
-          C:\vcpkg\vcpkg install ace@7.1.4 --triplet x64-windows
+          C:\vcpkg\vcpkg install ace --triplet x64-windows
           echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
       - name: Configure
@@ -119,7 +118,7 @@ jobs:
             -DUSE_LIBCURL=OFF `
             -DUSE_TRACY=OFF `
             -DUSE_PCH=ON `
-            "-DCMAKE_CXX_FLAGS=/EHsc /wd4996 /wd4355 /wd4244 /wd4267 /MP"
+            "-DCMAKE_CXX_FLAGS=/EHsc /wd4996 /wd4355 /wd4244 /wd4267 /MP /Zc:noexceptTypes-"
 
       - name: Build
         shell: pwsh
