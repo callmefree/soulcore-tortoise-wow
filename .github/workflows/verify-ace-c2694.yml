@@ -1,0 +1,65 @@
+name: verify-ace-c2694
+
+on:
+  push:
+    branches: [verify-ace]
+  workflow_dispatch:
+
+jobs:
+  verify:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup vcpkg
+        shell: pwsh
+        run: |
+          if (-not (Test-Path C:\vcpkg)) {
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
+            & C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          }
+          echo "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Install ACE
+        shell: pwsh
+        run: C:\vcpkg\vcpkg install ace --triplet x64-windows
+
+      - name: Enter MSVC env
+        shell: pwsh
+        run: |
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vsWhere -latest -property installationPath
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+          Write-Output "MSVC env ready"
+
+      - name: Compile BEFORE patch (expect C2694 failure)
+        shell: pwsh
+        continue-on-error: true
+        run: |
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vsWhere -latest -property installationPath
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+          cl /nologo /std:c++17 /EHsc /I C:\vcpkg\installed\x64-windows\include /c verify\test_c2694.cpp /Fo:before.obj
+          Write-Output "BEFORE_EXIT=$LASTEXITCODE"
+
+      - name: Patch Cleanup.h then compile (expect success)
+        shell: pwsh
+        run: |
+          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Cleanup.h'
+          $c = Get-Content $p -Raw
+          if ($c -match 'noexcept \(false\)') {
+            Write-Output 'Already patched'
+          } else {
+            $c = $c -replace 'virtual ~ACE_Cleanup \(\) = default;', 'virtual ~ACE_Cleanup () noexcept (false) = default;'
+            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
+            Write-Output 'Patched Cleanup.h'
+          }
+          $vsWhere = "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe"
+          $vsPath = & $vsWhere -latest -property installationPath
+          Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
+          Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
+          cl /nologo /std:c++17 /EHsc /I C:\vcpkg\installed\x64-windows\include /c verify\test_c2694.cpp /Fo:after.obj
+          Write-Output "AFTER_EXIT=$LASTEXITCODE"
+          if ($LASTEXITCODE -ne 0) { Write-Output 'VERIFY_RESULT=FAIL'; exit 1 } else { Write-Output 'VERIFY_RESULT=PASS' }
