@@ -820,6 +820,43 @@ void Channel::SendToOne(WorldPacket *data, ObjectGuid who)
         pPlayer->GetSession()->SendPacket(data);
 }
 
+bool Channel::LuaIsOn(ObjectGuid guid) const
+{
+    return IsOn(guid);
+}
+
+bool Channel::LuaIsBanned(ObjectGuid guid) const
+{
+    return IsBanned(guid);
+}
+
+uint8 Channel::LuaGetPlayerFlags(ObjectGuid guid) const
+{
+    return GetPlayerFlags(guid);
+}
+
+void Channel::LuaSetModerator(ObjectGuid guid, bool set)
+{
+    if (IsOn(guid))
+        SetModerator(guid, set);
+}
+
+void Channel::LuaSetMute(ObjectGuid guid, bool set)
+{
+    if (IsOn(guid))
+        SetMute(guid, set);
+}
+
+void Channel::LuaSendToAll(WorldPacket* data, ObjectGuid guid)
+{
+    SendToAll(data, guid);
+}
+
+void Channel::LuaSendToOne(WorldPacket* data, ObjectGuid who)
+{
+    SendToOne(data, who);
+}
+
 void Channel::Voice(ObjectGuid /*guid1*/, ObjectGuid /*guid2*/)
 {
 

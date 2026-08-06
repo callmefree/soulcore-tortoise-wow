@@ -211,6 +211,13 @@ class Channel
         void DeVoice(ObjectGuid guid1, ObjectGuid guid2);
         void JoinNotify(ObjectGuid guid);                                       // invisible notify
         void LeaveNotify(ObjectGuid guid);                                      // invisible notify
+        bool LuaIsOn(ObjectGuid guid) const;
+        bool LuaIsBanned(ObjectGuid guid) const;
+        uint8 LuaGetPlayerFlags(ObjectGuid guid) const;
+        void LuaSetModerator(ObjectGuid guid, bool set);
+        void LuaSetMute(ObjectGuid guid, bool set);
+        void LuaSendToAll(WorldPacket* data, ObjectGuid guid = ObjectGuid());
+        void LuaSendToOne(WorldPacket* data, ObjectGuid who);
 
         /**
         * This creates the packet informing client that the player is not on requested \ref name channel.
