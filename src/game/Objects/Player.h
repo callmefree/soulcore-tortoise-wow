@@ -1378,21 +1378,11 @@ class Player final: public Unit
 
         uint32 GetMoney() const { return GetUInt32Value(PLAYER_FIELD_COINAGE); }
         void LogModifyMoney(int32 d, const char* type, ObjectGuid fromGuid = ObjectGuid(), uint32 data = 0);
-        void ModifyMoney(int32 d)
-        {
-            if (d < 0)
-                SetMoney(GetMoney() > uint32(-d) ? GetMoney() + d : 0);
-            else
-                SetMoney(GetMoney() < uint32(MAX_MONEY_AMOUNT - d) ? GetMoney() + d : MAX_MONEY_AMOUNT);
-        }
+        void ModifyMoney(int32 d);
         void LootMoney(int32 g, Loot* loot);
         std::string GetShortDescription() const; // "player:guid [username:accountId@IP]"
 
-        void SetMoney(uint32 value)
-        {
-            SetUInt32Value(PLAYER_FIELD_COINAGE, value);
-            MoneyChanged(value);
-        }
+        void SetMoney(uint32 value);
 
         ObjectGuid const& GetLootGuid() const { return m_lootGuid; }
         void SetLootGuid(ObjectGuid const& guid) { m_lootGuid = guid; }
@@ -1745,7 +1735,7 @@ class Player final: public Unit
     public:
         uint32 GetFreeTalentPoints() const { return GetUInt32Value(PLAYER_CHARACTER_POINTS1); }
         uint32 GetTalentResetCost() const { return GetResetTalentsCost(); }
-        void SetFreeTalentPoints(uint32 points) { SetUInt32Value(PLAYER_CHARACTER_POINTS1, points); }
+        void SetFreeTalentPoints(uint32 points);
         void SetBonusTalentCount(uint32 count) { m_extraBonusTalentCount = count; UpdateFreeTalentPoints(); }
         uint32 GetBonusTalentCount() const { return m_extraBonusTalentCount; }
         void AddBonusTalent(uint32 count) { m_extraBonusTalentCount += count; UpdateFreeTalentPoints(); }
