@@ -104,11 +104,25 @@ jobs:
           C:\vcpkg\vcpkg install ace --triplet x64-windows
           echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Patch ACE Cleanup.h (MSVC C2694 workaround)
+        shell: pwsh
+        run: |
+          # MSVC 将模板类隐式析构推断为 noexcept(false), 与 ~ACE_Cleanup()=default(noexcept) 不匹配报 C2694
+          # 将基类析构声明为 noexcept(false): 派生无论推断为 true/false 都合法, 一处修复所有派生类
+          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Cleanup.h'
+          $c = Get-Content $p -Raw
+          if ($c -match 'noexcept \(false\)') {
+            Write-Output 'Already patched'
+          } else {
+            $c = $c -replace 'virtual ~ACE_Cleanup \(\) = default;', 'virtual ~ACE_Cleanup () noexcept (false) = default;'
+            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
+            Write-Output 'Patched Cleanup.h'
+          }
+
       - name: Patch ACE Singleton.h (MSVC C2694 workaround)
         shell: pwsh
         run: |
-          # MSVC 对 ACE_Cleanup 的 =default 析构与模板隐式析构的 noexcept 匹配报 C2694
-          # 在 ACE_Singleton 的 public 区插入显式 noexcept 析构消除该错误
+          # 保险: 给 ACE_Singleton 也加显式 noexcept 析构
           $p = 'C:\vcpkg\installed\x64-windows\include\ace\Singleton.h'
           $c = Get-Content $p -Raw
           if ($c -match '~ACE_Singleton \(\) noexcept') {
