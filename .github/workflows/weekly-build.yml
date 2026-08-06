@@ -144,7 +144,7 @@ jobs:
             -DUSE_SCRIPTS=ON `
             -DUSE_ANTICHEAT=ON `
             -DUSE_DISCORD_BOT=OFF `
-            -DUSE_EXTRACTORS=OFF `
+            -DUSE_EXTRACTORS=ON `
             -DUSE_LIBCURL=OFF `
             -DUSE_TRACY=OFF `
             -DUSE_PCH=ON `
@@ -160,6 +160,8 @@ jobs:
           $VERSION = (git rev-parse --short HEAD).Trim()
           New-Item -ItemType Directory -Force -Path dist\bin, dist\etc, dist\sql | Out-Null
           Copy-Item bin\Release\mangosd.exe, bin\Release\realmd.exe dist\bin\ -ErrorAction SilentlyContinue
+          Copy-Item bin\Release\mapextractor.exe, bin\Release\vmapextractor.exe, bin\Release\vmap_assembler.exe, bin\Release\MoveMapGen.exe dist\bin\ -ErrorAction SilentlyContinue
+          Copy-Item tools\mmap\offmesh.txt, tools\mmap\mmapSettings.txt dist\bin\ -ErrorAction SilentlyContinue
           Copy-Item C:\vcpkg\installed\x64-windows\bin\ACE.dll dist\bin\ -ErrorAction SilentlyContinue
           Get-ChildItem build -Recurse -Filter *.conf.dist -ErrorAction SilentlyContinue | Copy-Item -Destination dist\etc\
           Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + ($_.Name -replace '\.in$','')) }
