@@ -162,7 +162,7 @@ jobs:
           Copy-Item bin\Release\mangosd.exe, bin\Release\realmd.exe dist\bin\ -ErrorAction SilentlyContinue
           Copy-Item C:\vcpkg\installed\x64-windows\bin\ACE.dll dist\bin\ -ErrorAction SilentlyContinue
           Get-ChildItem build -Recurse -Filter *.conf.dist -ErrorAction SilentlyContinue | Copy-Item -Destination dist\etc\
-          Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + $_.BaseName + ".dist") }
+          Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + ($_.Name -replace '\.in$','')) }
           Copy-Item -Recurse sql\* dist\sql\ -ErrorAction SilentlyContinue
           tar czf soulcore-tortoise-wow-$VERSION-windows.tar.gz dist
 
