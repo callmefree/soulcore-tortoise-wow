@@ -47,6 +47,7 @@ class WorldObject;
 class GameObjectAI;
 class InstanceData;
 class Item;
+struct ItemPrototype;
 class Map;
 class Quest;
 class SpellAuraHolder;
