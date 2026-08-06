@@ -41,7 +41,7 @@ jobs:
           $vsPath = & $vsWhere -latest -property installationPath
           Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
-          cl /nologo /DWIN32 /D_WIN32 /EHsc /I C:\vcpkg\installed\x64-windows\include /c verify\test_c2694.cpp /Fo:before.obj
+          cl /nologo /std:c++17 /DWIN32 /D_WIN32 /EHsc /I C:\vcpkg\installed\x64-windows\include /c verify\test_c2694.cpp /Fo:before.obj
           Write-Output "BEFORE_EXIT=$LASTEXITCODE"
 
       - name: Patch Cleanup.h then compile (expect success)
@@ -60,6 +60,6 @@ jobs:
           $vsPath = & $vsWhere -latest -property installationPath
           Import-Module "$vsPath\Common7\Tools\Microsoft.VisualStudio.DevShell.dll"
           Enter-VsDevShell -VsInstallPath $vsPath -SkipAutomaticLocation -DevCmdArguments "-arch=x64"
-          cl /nologo /DWIN32 /D_WIN32 /EHsc /I C:\vcpkg\installed\x64-windows\include /c verify\test_c2694.cpp /Fo:after.obj
+          cl /nologo /std:c++17 /DWIN32 /D_WIN32 /EHsc /I C:\vcpkg\installed\x64-windows\include /c verify\test_c2694.cpp /Fo:after.obj
           Write-Output "AFTER_EXIT=$LASTEXITCODE"
           if ($LASTEXITCODE -ne 0) { Write-Output 'VERIFY_RESULT=FAIL'; exit 1 } else { Write-Output 'VERIFY_RESULT=PASS' }
