@@ -108,15 +108,14 @@ jobs:
         shell: pwsh
         run: |
           # MSVC 对 ACE_Cleanup 的 =default 析构与模板隐式析构的 noexcept 匹配报 C2694
-          # 给 ACE_Singleton 加显式 noexcept 析构消除该错误
+          # 在 ACE_Singleton 的 public 区插入显式 noexcept 析构消除该错误
           $p = 'C:\vcpkg\installed\x64-windows\include\ace\Singleton.h'
           $c = Get-Content $p -Raw
           if ($c -match '~ACE_Singleton \(\) noexcept') {
             Write-Output 'Already patched'
           } else {
-            $old = 'class ACE_Singleton : public ACE_Cleanup'
-            $new = "class ACE_Singleton : public ACE_Cleanup`r`n{`r`npublic:`r`n  /// Destructor.`r`n  ~ACE_Singleton () noexcept override = default;"
-            $c = $c -replace [regex]::Escape($old), $new
+            $ins = "  /// Destructor.`n  ~ACE_Singleton () noexcept override = default;"
+            $c = $c -replace '(class ACE_Singleton : public ACE_Cleanup\s*\{\s*public:)', ('$1' + "`n" + $ins)
             Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
             Write-Output 'Patched Singleton.h'
           }
