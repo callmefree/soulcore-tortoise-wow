@@ -104,6 +104,23 @@ jobs:
           C:\vcpkg\vcpkg install ace --triplet x64-windows
           echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
+      - name: Patch ACE Singleton.h (MSVC C2694 workaround)
+        shell: pwsh
+        run: |
+          # MSVC 对 ACE_Cleanup 的 =default 析构与模板隐式析构的 noexcept 匹配报 C2694
+          # 给 ACE_Singleton 加显式 noexcept 析构消除该错误
+          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Singleton.h'
+          $c = Get-Content $p -Raw
+          if ($c -match '~ACE_Singleton \(\) noexcept') {
+            Write-Output 'Already patched'
+          } else {
+            $old = 'class ACE_Singleton : public ACE_Cleanup'
+            $new = "class ACE_Singleton : public ACE_Cleanup`r`n{`r`npublic:`r`n  /// Destructor.`r`n  ~ACE_Singleton () noexcept override = default;"
+            $c = $c -replace [regex]::Escape($old), $new
+            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
+            Write-Output 'Patched Singleton.h'
+          }
+
       - name: Configure
         shell: pwsh
         run: |
