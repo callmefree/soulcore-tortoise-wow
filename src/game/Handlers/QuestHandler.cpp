@@ -514,7 +514,8 @@ void WorldSession::HandleQuestLogRemoveQuest(WorldPacket& recv_data)
 
     if (slot < MAX_QUEST_LOG_SIZE)
     {
-        if (uint32 quest = _player->GetQuestSlotQuestId(slot))
+        uint32 quest = _player->GetQuestSlotQuestId(slot);
+        if (quest)
         {
             sScriptMgr.OnQuestCanceled(_player, quest);
             if (!_player->TakeOrReplaceQuestStartItems(quest, true, true))

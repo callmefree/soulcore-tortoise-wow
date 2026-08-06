@@ -1690,6 +1690,8 @@ void Group::_setLeader(ObjectGuid guid)
     if (slot == m_memberSlots.end())
         return;
 
+    ObjectGuid oldLeaderGuid = m_leaderGuid;
+
     if (!isBGGroup())
     {
         uint32 slot_lowguid = slot->guid.GetCounter();

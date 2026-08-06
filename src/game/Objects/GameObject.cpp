@@ -133,6 +133,8 @@ bool CanOnlyBeLootedByPlayersOnMapAtSpawn(uint32 entry)
 
 void GameObject::AddToWorld()
 {
+    bool wasInWorld = IsInWorld();
+
     ///- Register the gameobject for guid lookup
     if (!IsInWorld())
     {
@@ -419,6 +421,7 @@ void GameObject::Update(uint32 update_diff, uint32 /*p_time*/)
                 {
                     m_respawnTime = 0;
                     ClearAllUsesData();
+                    bool spawned = false;
 
                     switch (GetGoType())
                     {

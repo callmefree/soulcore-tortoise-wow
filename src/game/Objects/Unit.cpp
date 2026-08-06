@@ -1101,6 +1101,7 @@ void Unit::Kill(Unit* pVictim, SpellEntry const *spellProto, bool durabilityLoss
     Player *pPlayerTap = GetCharmerOrOwnerPlayerOrPlayerItself();
     Creature* pCreatureVictim = pVictim->ToCreature();
     Player* pPlayerVictim = pVictim->ToPlayer();
+    Player* pPetKillOwner = pCreatureVictim && ToCreature() ? pPlayerTap : nullptr;
     Group *pGroupTap = nullptr;
 
     // in creature kill case group/player tap stored for pCreatureVictim
@@ -6836,6 +6837,8 @@ void Unit::SetInCombatWithVictim(Unit* pVictim, bool touchOnly/* = false*/, uint
 
 void Unit::ClearInCombat()
 {
+    bool wasInCombat = IsInCombat();
+
     m_combatTimer = 0;
     RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_IN_COMBAT);
     RemoveFlag(UNIT_FIELD_FLAGS, UNIT_FLAG_PET_IN_COMBAT);

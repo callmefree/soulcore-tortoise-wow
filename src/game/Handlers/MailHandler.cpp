@@ -92,6 +92,7 @@ public:
     uint32 accountId;
     ObjectGuid senderGuid;
     ObjectGuid receiver;
+    ObjectGuid mailboxGuid;
     ObjectGuid itemGuid;
     uint32      money;
     uint32      COD;

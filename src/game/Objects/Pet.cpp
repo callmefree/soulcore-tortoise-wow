@@ -93,6 +93,8 @@ Pet::~Pet()
 
 void Pet::AddToWorld()
 {
+    bool wasInWorld = IsInWorld();
+
     ///- Register the pet for guid lookup
     if (!IsInWorld())
         GetMap()->InsertObject<Pet>(GetObjectGuid(), this);

@@ -630,10 +630,11 @@ void WorldSession::HandleAuctionRemoveItem(WorldPacket & recv_data)
 
     AuctionEntry *auction = auctionHouse->GetAuction(auctionId);
     Player *pl = GetPlayer();
+    Item* pItem = nullptr;
 
     if (auction && auction->owner == pl->GetGUIDLow())
     {
-        Item *pItem = sAuctionMgr.GetAItem(auction->itemGuidLow);
+        pItem = sAuctionMgr.GetAItem(auction->itemGuidLow);
         if (pItem)
         {
             if (auction->bidder > 0)                        // If we have a bidder, we have to send him the money he paid
