@@ -22,7 +22,9 @@
 #include "TemporarySummon.h"
 #include "Log.h"
 #include "CreatureAI.h"
+#ifdef USE_LUA
 #include "TurtleLuaEngine.h"
+#endif
 
 TemporarySummon::TemporarySummon(ObjectGuid summoner) : Creature(CREATURE_SUBTYPE_TEMPORARY_SUMMON), m_type(TEMPSUMMON_TIMED_OR_CORPSE_DESPAWN), m_timer(0), m_lifetime(0), m_summoner(summoner), m_unSummonInformed(false)
 {
@@ -273,9 +275,14 @@ void TemporarySummon::InformSummonerOfDespawn()
 
         if (Creature* cOwner = pSummoner->ToCreature())
         {
+#ifdef USE_LUA
             bool skipDespawnAI = sTurtleLuaEngine.OnCreatureSummonedCreatureDespawn(cOwner, this);
             if (!skipDespawnAI && cOwner->AI())
                 cOwner->AI()->SummonedCreatureDespawn(this);
+#else
+            if (cOwner->AI())
+                cOwner->AI()->SummonedCreatureDespawn(this);
+#endif
         }
     }
 }

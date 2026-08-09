@@ -35,7 +35,9 @@
 #include "MoveMap.h"
 #include "ChannelBroadcaster.h"
 #include "PerformanceMonitor.h"
+#ifdef USE_LUA
 #include "TurtleLuaEngine.h"
+#endif
 
 typedef MaNGOS::ClassLevelLockable<MapManager, std::recursive_mutex> MapManagerLock;
 INSTANTIATE_SINGLETON_2(MapManager, MapManagerLock);
@@ -650,7 +652,9 @@ BattleGroundMap* MapManager::CreateBattleGroundMap(uint32 id, uint32 InstanceId,
 
     //add map into map container
     i_maps[MapID(id, InstanceId)] = map;
+#ifdef USE_LUA
     sTurtleLuaEngine.OnBattleGroundCreate(bg);
+#endif
 
     // BGs/Arenas not have saved instance data
     map->CreateInstanceData(false);

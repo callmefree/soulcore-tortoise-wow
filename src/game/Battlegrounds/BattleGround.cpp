@@ -37,7 +37,9 @@
 #include "Formulas.h"
 #include "GridNotifiersImpl.h"
 #include "Chat.h"
+#ifdef USE_LUA
 #include "TurtleLuaEngine.h"
+#endif
 
 namespace MaNGOS
 {
@@ -231,7 +233,9 @@ BattleGround::BattleGround()
 
 BattleGround::~BattleGround()
 {
+#ifdef USE_LUA
     sTurtleLuaEngine.OnBattleGroundPreDestroy(this);
+#endif
 
     // remove objects and creatures
     // (this is done automatically in mapmanager update, when the instance is reset after the reset time)
@@ -415,7 +419,9 @@ void BattleGround::Update(uint32 diff)
                 SendMessageToAll(m_StartMessageIds[BG_STARTING_EVENT_FOURTH], CHAT_MSG_BG_SYSTEM_NEUTRAL);
             SetStatus(STATUS_IN_PROGRESS);
             SetStartDelayTime(m_StartDelayTimes[BG_STARTING_EVENT_FOURTH]);
+#ifdef USE_LUA
             sTurtleLuaEngine.OnBattleGroundStart(this);
+#endif
 
             PlaySoundToAll(SOUND_BG_START);
 
@@ -723,7 +729,9 @@ void BattleGround::EndBattleGround(Team winner)
 
     SetStatus(STATUS_WAIT_LEAVE);
     SetEndTime(GetTypeID() == BATTLEGROUND_BR ? 15000 : TIME_TO_AUTOREMOVE);
+#ifdef USE_LUA
     sTurtleLuaEngine.OnBattleGroundEnd(this, static_cast<uint32>(winner));
+#endif
 
     if (m_finalScore.empty())
         sBattleGroundMgr.BuildPvpLogDataPacket(&m_finalScore, this);
@@ -1781,7 +1789,9 @@ void BattleGround::EndNow()
     RemoveFromBGFreeSlotQueue();
     SetStatus(STATUS_WAIT_LEAVE);
     SetEndTime(0);
+#ifdef USE_LUA
     sTurtleLuaEngine.OnBattleGroundEnd(this, static_cast<uint32>(TEAM_NONE));
+#endif
 
     if (m_finalScore.empty())
         sBattleGroundMgr.BuildPvpLogDataPacket(&m_finalScore, this);

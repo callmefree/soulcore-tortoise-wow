@@ -23,6 +23,11 @@ Eluna.Enabled = 1
 
 Eluna.ScriptPath = "lua_scripts"
 
+# Eluna.TopLevelScriptPath. Optional extra directory where Lua scripts are also loaded from.
+# Leave empty to disable.
+
+Eluna.TopLevelScriptPath = ""
+
 # HonorDir. Folder to store HCR files. These are logs of weekly honor calculation.
 
 HonorDir = "../honor"

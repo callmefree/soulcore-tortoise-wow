@@ -530,6 +530,7 @@ ChatCommand * ChatHandler::getCommandTable()
     { 
         // turtle
         { "shop",                         SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleReloadShopCommand,                    "", nullptr },
+        { "eluna",                        SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleReloadElunaCommand,                   "", nullptr },
         { "bgplayers",                    SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleReloadBgAmounts,                      "", nullptr},
         { "gmlevels",                     SEC_DEVELOPER,        true,  &ChatHandler::HandleReloadGmLevelsCommand,                "", nullptr},
         { "gm_ticket_template",           SEC_ADMINISTRATOR,    true,  &ChatHandler::HandleReloadGmTicketTemplatesCommand,       "", nullptr},

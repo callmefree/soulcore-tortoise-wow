@@ -51,7 +51,9 @@
 #include "InstanceData.h"
 #include "Chat.h"
 #include "Anticheat.h"
+#ifdef USE_LUA
 #include "TurtleLuaEngine.h"
+#endif
 
 #include "packet_builder.h"
 #include "MovementBroadcaster.h"
@@ -2240,12 +2242,17 @@ Creature* WorldObject::SummonCreature(uint32 id, float x, float y, float z, floa
 
     pCreature->Summon(spwtype, despwtime, pFuncAiSetter);
 
+#ifdef USE_LUA
     if (Creature* summoner = ToCreature())
     {
         bool skipJustSummonedAI = sTurtleLuaEngine.OnCreatureJustSummoned(summoner, pCreature);
         if (!skipJustSummonedAI && summoner->AI())
             summoner->AI()->JustSummoned(pCreature);
     }
+#else
+    if (GetTypeId() == TYPEID_UNIT && ((Creature*)this)->AI())
+        ((Creature*)this)->AI()->JustSummoned(pCreature);
+#endif
 
     // Creature Linking, Initial load is handled like respawn
     if (pCreature->IsLinkingEventTrigger())

@@ -620,6 +620,7 @@ private:
     uint64 _stateId;
     uint32 _nextTimedEventId;
     std::string _scriptPath;
+    std::string _topLevelScriptPath;
     std::recursive_mutex _lock;
     std::mutex _asyncQueryLock;
     std::mutex _httpResponseLock;

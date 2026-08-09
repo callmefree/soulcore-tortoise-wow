@@ -17428,6 +17428,7 @@ void TurtleLuaEngine::Initialize()
 
     _enabled = sConfig.GetBoolDefault("Eluna.Enabled", true);
     _scriptPath = sConfig.GetStringDefault("Eluna.ScriptPath", "lua_scripts");
+    _topLevelScriptPath = sConfig.GetStringDefault("Eluna.TopLevelScriptPath", "");
 
     if (!_enabled)
     {
@@ -20320,31 +20321,43 @@ void TurtleLuaEngine::LoadScripts()
 
     namespace fs = std::filesystem;
 
+    std::vector<std::string> dirs;
+    dirs.push_back(_scriptPath);
+    if (!_topLevelScriptPath.empty())
+        dirs.push_back(_topLevelScriptPath);
+
     std::error_code ec;
-    if (!fs::exists(_scriptPath, ec))
-    {
-        fs::create_directories(_scriptPath, ec);
-        sLog.outString("[Lua] Script directory '%s' created. No Lua scripts loaded.", _scriptPath.c_str());
-        return;
-    }
-
     uint32 count = 0;
-    for (auto const& entry : fs::recursive_directory_iterator(_scriptPath, ec))
+    for (auto const& dir : dirs)
     {
-        if (ec)
-            break;
-
-        if (!entry.is_regular_file())
+        if (!fs::exists(dir, ec))
+        {
+            fs::create_directories(dir, ec);
+            sLog.outString("[Lua] Script directory '%s' created. No Lua scripts loaded.", dir.c_str());
             continue;
+        }
 
-        if (entry.path().extension() != ".lua")
-            continue;
+        for (auto const& entry : fs::recursive_directory_iterator(dir, ec))
+        {
+            if (ec)
+                break;
 
-        LoadScriptFile(entry.path().string());
-        ++count;
+            if (!entry.is_regular_file())
+                continue;
+
+            if (entry.path().extension() != ".lua")
+                continue;
+
+            LoadScriptFile(entry.path().string());
+            ++count;
+        }
+        ec.clear();
     }
 
-    sLog.outString("[Lua] Loaded %u Lua script%s from '%s'.", count, count == 1 ? "" : "s", _scriptPath.c_str());
+    std::string dirsLog = _scriptPath;
+    if (!_topLevelScriptPath.empty())
+        dirsLog += " / " + _topLevelScriptPath;
+    sLog.outString("[Lua] Loaded %u Lua script%s from '%s'.", count, count == 1 ? "" : "s", dirsLog.c_str());
 }
 
 void TurtleLuaEngine::LoadScriptFile(std::string const& path)

@@ -96,6 +96,7 @@
 #include "PerfStats.h"
 #include "PerformanceMonitor.h"
 #include "../scripts/miscellaneous/npc_loothelper.h"
+#include "TurtleLuaEngine.h"
 
 
 #ifdef ENABLE_LSAN
@@ -250,6 +251,17 @@ bool ChatHandler::HandleReloadConfigCommand(char* /*args*/)
     sWorld.LoadConfigSettings(true);
     sAnticheatLib->Reload();
     SendSysMessage("World config settings reloaded.");
+    return true;
+}
+
+bool ChatHandler::HandleReloadElunaCommand(char* /*args*/)
+{
+#ifdef USE_LUA
+    sTurtleLuaEngine.Reload();
+    SendSysMessage("Eluna scripts reloaded.");
+#else
+    SendSysMessage("Eluna is disabled (USE_LUA=OFF).");
+#endif
     return true;
 }
 

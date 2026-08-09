@@ -611,6 +611,7 @@ class ChatHandler
 
         bool HandleReloadConfigCommand(char* args);
         bool HandleReloadQuestTemplateCommand(char* args);
+        bool HandleReloadElunaCommand(char* args);
 
         bool HandleResetAllCommand(char* args);
         bool HandleResetHonorCommand(char* args);

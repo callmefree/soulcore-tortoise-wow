@@ -173,6 +173,21 @@ void WorldSession::HandleUseItemOpcode(WorldPacket& recvPacket)
 
     if (!sScriptMgr.OnItemUse(pUser, pItem, targets))
         pUser->CastItemUseSpell(pItem, targets);
+    else
+    {
+        // Eluna/脚本层阻止了物品施法: 客户端已本地预测播放施法动作, 补发施法失败包以清除动作
+        uint32 spellid = 0;
+        for (const auto& itr : proto->Spells)
+        {
+            if (itr.SpellTrigger == ITEM_SPELLTRIGGER_ON_USE || itr.SpellTrigger == ITEM_SPELLTRIGGER_ON_NO_DELAY_USE)
+            {
+                spellid = itr.SpellId;
+                break;
+            }
+        }
+        if (SpellEntry const* spellInfo = sSpellMgr.GetSpellEntry(spellid))
+            Spell::SendCastResult(_player, spellInfo, SPELL_FAILED_INTERRUPTED);
+    }
 }
 
 void WorldSession::HandleOpenItemOpcode(WorldPacket& recvPacket)
