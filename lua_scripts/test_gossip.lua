@@ -1,4 +1,6 @@
 -- NPC gossip 测试 (creature entry 190001, 已入库 tw_world)
+-- ⚠️ 测试脚本（2026-08-09 标注）："给我一个炉石"选项无任何 GM/等级校验，
+--    任意玩家可无限领取（审计 P2 同类问题）。当前仅测试用途，正式运营前需删除或加限制。
 -- 第二阶段修正: creature:GossipMenuAddItem -> player:GossipMenuAddItem; player:GossipMenu -> player:SendGossipMenu
 -- (GossipMenuAddItem/SendGossipMenu 均为 Player 方法, TurtleLuaEngine.cpp:8344/8360)
 -- 2026-08-09 修复:
