@@ -16,6 +16,7 @@
 | `013_phase1_gems.sql` | tw_world | 阶段1 宝石：四色 901001-901020 + 书页 905002 / 书 905003 |
 | `014_phase1_rune_punch.sql` | tw_world | 阶段1 符文 900001-900033 + 打孔器 905010（**v3：固化导出，已验证可重放**） |
 | `015_phase1_punch_ddl.sql` | tw_char | 打孔记录表 `soulcore_arpg_sockets`（独立 DDL） |
+| `016_phase1_gate.sql` | tw_char + tw_world | 阶段1 符文门控：物品 905004 远古符文卷轴 + 配置表 `soulcore_arpg_gate`（**全限定名，任意默认库可重放**） |
 
 > ⚠️ `_backup_014_before_replay.sql` 是 014 重放前的数据快照（保留作回滚依据，不参与重放序列）。
 
@@ -34,6 +35,8 @@ MYSQL="<mariadb>/bin/mysql.exe"
 "$MYSQL" -uroot -p --default-character-set=utf8 tw_world < 013_phase1_gems.sql
 "$MYSQL" -uroot -p --default-character-set=utf8 tw_world < 014_phase1_rune_punch.sql
 "$MYSQL" -uroot -p --default-character-set=utf8 tw_char   < 015_phase1_punch_ddl.sql
+# 016 跨库（tw_char + tw_world），用全限定名，任意默认库 source 即可
+"$MYSQL" -uroot -p --default-character-set=utf8 -e "source <绝对路径>/016_phase1_gate.sql"
 ```
 
 ## 规范
