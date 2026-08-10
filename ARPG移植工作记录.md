@@ -6,7 +6,7 @@
 
 ---
 
-## 一、当前状态总览（2026-08-10 13:08）
+## 一、当前状态总览（2026-08-10 推进会）
 
 | 项 | 状态 |
 |---|---|
@@ -14,8 +14,16 @@
 | 阶段 0（技术探针） | ✅ **全部完成，门禁通过** |
 | 阶段 1（A 级 9 项） | 🔄 **6 项完成，2 项待实测，1 项待开发** |
 | lua_scripts/arpg/ | 7 个脚本已部署（city_crier/combine/gem/guide_npc/rune/socket/travel_vendor） |
-| local_changes SQL | 8 个文件（001-003 基建 + 010-014 ARPG） |
+| local_changes SQL | **9 个文件（001-003 基建 + 010-015 ARPG，014 已修复可重放）** |
 | 自定义表（tw_char） | soulcore_arpg_sockets（打孔）、soulcore_hearthstone（炉石） |
+| 版本控制 | ✅ **git 基线已建（b34ef19），44 文件入库** |
+
+**本次推进会（2026-08-10）已完成**：
+1. **014 修复**：手写 SELECT 实际 137 列 vs 表 130 列（重放 1136 从未成功）→ v3 由 gen_runes.py 数据 mysqldump 固化，**双重放验证幂等**；打孔 DDL 拆出 015
+2. **探针 1-7**：`item_template.set_id` ✓ + 套装表名 **itemset**（非 item_set，2070 件物品带 set_id，含 ItemId1-17）→ 实现路径明确
+3. **探针 1-9**：**Turtle 1.12 无成体系传家宝物品**（原版 7115-7118 是任务品，8xxxx 自定义段也没有）→ 需与用户确认改法
+4. **静态审查**：socket.lua `MAX_HOLES` 2→1（唯一扩展宝石槽=槽5，打 2 孔无槽可用纯浪费）、`CharDBExecute` 补 pcall；gem.lua 注释清理（v3.1）
+5. **git 基线入库**
 
 ---
 
@@ -26,12 +34,12 @@
 | 1-1 | 新手引导（艾薇儿 190101） | ✅ 通过 | gossip 菜单：领随身商贩技能书/玩法介绍；暴风城银行门口(-9066,433)，display 1267 女性人类 | — |
 | 1-2 | 随身小伙伴（905001） | ✅ 通过 | 右键技能书 → SummonCreature 190105 面前 3 码，90 秒消失；item use return false 阻止 | — |
 | 1-3 | 主城喊话 | ✅ 通过 | CreateLuaEvent(30s 后, 每 4 分钟) + SendWorldMessage 台词池随机 | — |
-| 1-4 | 1-33 号符文（900001-900033） | 🔄 **待终测** | rune.lua：右键 → 菜单选装备 → SetEnchantment **槽4**（PROP_SLOT_1，与宝石槽3/槽5共存）；**主菜单直接列出带符文部位可取下（刚改版）** | 刚改主菜单直列版，需 .reload eluna 后重测 |
-| 1-5 | 四色宝石（901001-901020） | ✅ 通过 | gem.lua v3：右键 → gossip 菜单选装备镶嵌/取下返还；槽3 基础 + 槽5 打孔扩展；同色限 2；EQUIP_SPELL 持久 | — |
+| 1-4 | 1-33 号符文（900001-900033） | 🔄 **待终测** | rune.lua v2：右键 → 菜单选装备 → SetEnchantment **槽4**（PROP_SLOT_1，与宝石槽3/槽5共存）；**主菜单直接列出带符文部位可取下** | 已静态审查（逻辑自洽）；需 .reload eluna 后重测（含取下/返还） |
+| 1-5 | 四色宝石（901001-901020） | ✅ 通过 | gem.lua v3.1：右键 → gossip 菜单选装备镶嵌/取下返还；槽3 基础 + 槽5 打孔扩展；同色限 2 | 注释已清理（v3.1），槽位定稿 |
 | 1-6 | 宝石合成链（905002/905003） | ✅ 通过 | 3 书页→1 书；书→随机 1 级宝石 | 3 合 1 宝石升级二期 |
-| 1-7 | 套装重铸 | ⏸ 未做 | 计划：重铸石 904003 → 选中套装部件转换（5% 消失） | 下一批 |
-| 1-8 | 拉玛兰迪打孔器（905010） | 🔄 **待实测** | socket.lua：右键 → 选装备 → tw_char.soulcore_arpg_sockets 记录 holes → 宝石槽+1（gem.lua 读取） | 打孔表刚补建，需实测 |
-| 1-9 | 传家宝符文激活 | ⏸ 未做 | 计划：Turtle 传家宝金币购买 + 持有对应符文才能使用 | 下一批 |
+| 1-7 | 套装重铸 | ⏸ 未做（**探针完成**） | 计划：重铸石 904003 → 选中套装部件转换（5% 消失） | 探针：set_id 字段 ✓；套装表名 **itemset**（非 item_set）；2070 件带 set_id。实现路径：item_template.set_id → itemset.ItemId1-17 找同套其他部件 |
+| 1-8 | 拉玛兰迪打孔器（905010） | 🔄 **待实测** | socket.lua v2：右键 → 选装备 → tw_char.soulcore_arpg_sockets 记录 holes → 宝石槽+1（gem.lua 读取，扩展槽=槽5） | **MAX_HOLES 2→1 已修**（槽5 只有 1 个）；CharDBExecute 已补 pcall |
+| 1-9 | 传家宝符文激活 | ⏸ 未做（**探针完成**） | 计划：Turtle 传家宝金币购买 + 持有对应符文才能使用 | **探针：无成体系传家宝** → 需与用户确认改法（自定义传家宝 / 换系统 / 放弃） |
 
 **阶段 1 门禁**：9 项全 ✅ + .reload eluna 无报错 + 日志 0 新增 ERROR（当前未达标，差 1-4 终测 / 1-8 实测 / 1-7 / 1-9）
 
@@ -73,12 +81,15 @@
 5. **复杂数据生成用 Python 脚本**（gen_runes.py）：SQL JOIN+UNION 生成 33 条易列数不匹配。
 6. **Eluna DB 查询必须 pcall**：gem.lua v3 查不存在的表直接抛错崩事件（右键无反应），已全部加防御。
 7. gossip 菜单：creature gossip 需 GossipClearMenu 防叠加；item gossip 用 GossipSendMenu(1, item)。
+8. **全列 INSERT/REPLACE 严禁手写**：014 v1/v2 手写 130 列 SELECT 实际是 **137 列**（多 7 列，且 mysql 客户端遇错即停 → 后续 DDL 全没跑）。永远用生成器（gen_runes.py 类）产出 → mysqldump 固化 → 重放验证。**014 v3 已按此重做并双重放验证**。
+9. **打孔数 ≠ 宝石槽数**：socket.lua 原 MAX_HOLES=2（可打 2 孔），但装备只有 1 个扩展宝石槽（槽5，槽4 归符文）→ 第 2 孔无槽可用纯浪费打孔器。**打孔上限 = 可用扩展槽数**，已改 1。
+10. **套装表名是 `itemset` 不是 `item_set`**（Turtle 1.12）：查表前先 SHOW TABLES 确认，别按官方文档的名字猜。
 
 ---
 
 ## 五、数据资产清单
 
-### SQL（sql/local_changes/，按序重放）
+### SQL（sql/local_changes/，按序重放，README.md 有完整命令）
 | 文件 | 内容 |
 |---|---|
 | 001-003 | 基建（NPC 190001 / admin rank4 / realmlist） |
@@ -86,11 +97,12 @@
 | 011_phase0_probes.sql | 探针测试：词缀池 9001→IRP117 + 测试紫装 950001（保留） |
 | 012_phase1_guide_vendor.sql | 905001 技能书 / 190105 随身商贩(+15货) / 190101 艾薇儿 |
 | 013_phase1_gems.sql | 四色宝石 901001-901020 + 书页 905002/书 905003 |
-| 014_phase1_rune_punch.sql | 符文 900001-900033 + 905010 打孔器 + 打孔表 DDL（⚠️ 该文件有 `||` bug，表已单独补建，重放时跳过错误段或只用末尾 DDL） |
+| 014_phase1_rune_punch.sql | 符文 900001-900033 + 905010 打孔器（**v3：gen_runes.py 数据固化导出，已验证可重放，幂等**） |
+| 015_phase1_punch_ddl.sql | 打孔记录表 DDL（独立文件，tw_char） |
 
 ### Lua（server/bin/lua_scripts/）
 - 正式 3 个：welcome / test_gossip / super_hearthstone
-- arpg/ 7 个：city_crier / combine / gem(v3) / guide_npc / rune(v2 主菜单直列版) / socket / travel_vendor
+- arpg/ 7 个：city_crier / combine / gem(**v3.1** 注释清理) / guide_npc / rune(v2 主菜单直列版) / socket(**v2** MAX_HOLES=1) / travel_vendor
 
 ### 工具（工具/）
 - gen_equip_sql.py（远古/太古生成，已验证）
@@ -109,12 +121,18 @@
 
 ## 六、下一步工作
 
-### 立即（收尾阶段 1）
-1. `.reload eluna` 重测 1-4 符文（主菜单直列取下版）——用户已反馈待测
-2. 实测 1-8 打孔器（905010 → 打孔 → 双宝石）
-3. 开发 1-7 套装重铸（904003 重铸石：选中背包套装部件 → 同套其他部件，5% 消失；需 WorldDBQuery 查 item_template.set_id）
-4. 开发 1-9 传家宝符文激活（先查 Turtle 传家宝物品 entry）
-5. 9 项全过后更新阶段 1 门禁 → 计划书勾选
+### 立即（收尾阶段 1 —— 用户游戏内实测）
+1. **实测 1-4 符文**（先 `.reload eluna`）：
+   - `.additem 900001` 等符文 → 右键 → 菜单选装备镶嵌 → 面板力量 +1 → **槽4 与槽3 宝石共存验证**
+   - 主菜单直列取下：右键另一符文 → 列表出现"取下 XX 的符文" → 取下 → 符文返还 + 附魔消失
+   - 注意：**镶嵌目标 = 第一件空符文槽装备**（当前 v2 行为，若需指定部位再提）
+2. **实测 1-8 打孔器**（905010）：
+   - 右键打孔器 → 列表出现装备（当前 x/2 槽）→ 打孔 → 消耗 1 个打孔器 + holes=1
+   - 再用宝石右键 → 该装备出现槽5 → 镶第 2 颗宝石 → 属性叠加
+   - 重登后双宝石仍在（持久性）；打孔后菜单显示 2/2 槽（MAX_HOLES=1 已生效）
+3. **1-7 套装重铸开发**：904003 重铸石 → Eluna item use → 列背包带 set_id 的套装部件 → itemset.ItemId1-17 找同套其他部件 → 转换（5% 消失）。前置已探明（set_id + itemset）
+4. **1-9 待用户决策**：Turtle 无传家宝 → 三选一（自定义传家宝装备 / 换成其他系统 / 放弃该项）
+5. 9 项全过后更新阶段 1 门禁 → 计划书勾选 → git 提交推进记录
 
 ### 后续
 - 阶段 2（B 级 9 项）：2a 词缀（复用 IRP 复合条目）/ 2b 三色球 / 2c 通货+远古太古（复用 gen_equip_sql.py）/ 2d 红装 / 2e 传奇宝石 / 2f 诅咒宝石 / 2g 副本门控 / 2h 赫拉迪克方块 / 2i 全职业宠物
