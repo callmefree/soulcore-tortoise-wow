@@ -1,0 +1,149 @@
+# ARPG 移植工作记录（Soulcore Turtle WoW 1.12 + Eluna）
+
+> 创建：2026-08-10 ｜ 上游：Penqle/tortoise-wow ｜ 引擎：WYTurtle TurtleLuaEngine（Eluna 兼容层）
+> 配套：《ARPG系统移植计划书.md》（主计划）、《素材\阶段0探针报告.md》、《ARPG阶段0落地报告.md》
+> **重开会话先读本文件**，然后按"七、重启与恢复"启动环境继续。
+
+---
+
+## 一、当前状态总览（2026-08-10 13:08）
+
+| 项 | 状态 |
+|---|---|
+| 服务端 | ✅ 运行中（realmd 3724 / mangosd 8090 / MariaDB 3306） |
+| 阶段 0（技术探针） | ✅ **全部完成，门禁通过** |
+| 阶段 1（A 级 9 项） | 🔄 **6 项完成，2 项待实测，1 项待开发** |
+| lua_scripts/arpg/ | 7 个脚本已部署（city_crier/combine/gem/guide_npc/rune/socket/travel_vendor） |
+| local_changes SQL | 8 个文件（001-003 基建 + 010-014 ARPG） |
+| 自定义表（tw_char） | soulcore_arpg_sockets（打孔）、soulcore_hearthstone（炉石） |
+
+---
+
+## 二、阶段 1 逐项状态（9 项）
+
+| # | 系统 | 状态 | 关键实现 | 遗留 |
+|---|---|---|---|---|
+| 1-1 | 新手引导（艾薇儿 190101） | ✅ 通过 | gossip 菜单：领随身商贩技能书/玩法介绍；暴风城银行门口(-9066,433)，display 1267 女性人类 | — |
+| 1-2 | 随身小伙伴（905001） | ✅ 通过 | 右键技能书 → SummonCreature 190105 面前 3 码，90 秒消失；item use return false 阻止 | — |
+| 1-3 | 主城喊话 | ✅ 通过 | CreateLuaEvent(30s 后, 每 4 分钟) + SendWorldMessage 台词池随机 | — |
+| 1-4 | 1-33 号符文（900001-900033） | 🔄 **待终测** | rune.lua：右键 → 菜单选装备 → SetEnchantment **槽4**（PROP_SLOT_1，与宝石槽3/槽5共存）；**主菜单直接列出带符文部位可取下（刚改版）** | 刚改主菜单直列版，需 .reload eluna 后重测 |
+| 1-5 | 四色宝石（901001-901020） | ✅ 通过 | gem.lua v3：右键 → gossip 菜单选装备镶嵌/取下返还；槽3 基础 + 槽5 打孔扩展；同色限 2；EQUIP_SPELL 持久 | — |
+| 1-6 | 宝石合成链（905002/905003） | ✅ 通过 | 3 书页→1 书；书→随机 1 级宝石 | 3 合 1 宝石升级二期 |
+| 1-7 | 套装重铸 | ⏸ 未做 | 计划：重铸石 904003 → 选中套装部件转换（5% 消失） | 下一批 |
+| 1-8 | 拉玛兰迪打孔器（905010） | 🔄 **待实测** | socket.lua：右键 → 选装备 → tw_char.soulcore_arpg_sockets 记录 holes → 宝石槽+1（gem.lua 读取） | 打孔表刚补建，需实测 |
+| 1-9 | 传家宝符文激活 | ⏸ 未做 | 计划：Turtle 传家宝金币购买 + 持有对应符文才能使用 | 下一批 |
+
+**阶段 1 门禁**：9 项全 ✅ + .reload eluna 无报错 + 日志 0 新增 ERROR（当前未达标，差 1-4 终测 / 1-8 实测 / 1-7 / 1-9）
+
+---
+
+## 三、关键机制与 API（写脚本直接查）
+
+### 槽位分工（防冲突，已定稿）
+| 槽 | 用途 | 说明 |
+|---|---|---|
+| 3 (PROP_SLOT_0) | 宝石基础槽 | 每装备 1 个 |
+| 4 (PROP_SLOT_1) | 符文槽 | 每装备 1 个，与宝石共存 |
+| 5 (PROP_SLOT_2) | 宝石扩展槽 | 打孔后可用（socket.lua 记录） |
+
+### 常用 Eluna API（TurtleLuaEngine.cpp 行号）
+- `RegisterPlayerEvent`：OnLogin=3 / OnChat=18（**玩家事件**，勿用 RegisterServerEvent）
+- `RegisterItemEvent(entry, 2, fn)` / `RegisterItemGossipEvent(entry, 2, fn)`：item use + item gossip（可同时注册，炉石同款）
+- item gossip 回调 `(event, player, item, sender, action, code)`；菜单用 `player:GossipSendMenu(1, item)`
+- `Item:SetEnchantment(enchant, slot)` :12344 / `GetEnchantmentId(slot)` :12150 / `ClearEnchantment(slot)` :12367
+- `Unit:AddAura(spellId)` :9443；`SummonCreature(entry,x,y,z,o,type=1,ms)` :11224（type 1=TIMED_OR_DEAD_DESPAWN）
+- `CreateLuaEvent(fn, ms, repeats)` :2074（repeats=0 无限）；`SendWorldMessage(msg)` :2796
+- `GetEquippedItemBySlot(0-18)` / `GetItemCount` / `RemoveItem` / `AddItem` / `HasItem`
+- `CharDBQuery/CharDBExecute/WorldDBQuery/WorldDBExecute`（全局）
+
+### 事件注册铁律
+- 玩家事件用 RegisterPlayerEvent（OnLogin=3/OnChat=18/OnLevelChange=13）
+- 聊天触发词禁点前缀（GM 命令系统拦截）
+- item use **返回 false 才阻止施法**（本引擎布尔语义与官方相反）
+- **事件里所有 DB 查询必须 pcall 包裹**（表缺失/查询异常会崩事件 → 右键静默无反应）
+
+---
+
+## 四、踩坑记录（本阶段新增，勿重踩）
+
+1. **item 无使用法术 → 客户端右键不触发**：spellid_1=0 时客户端不认为可"使用"。必须给可右键物品配一个现有法术（如 8690 炉石）作载体，脚本 return false 阻止。
+2. **客户端缓存物品定义**：改物品模板后需**小退重登**（客户端才重新拉取，否则右键无动作）。
+3. **SQL 改表后服务端内存不刷新**：.reload eluna 只管 Lua；item_template/creature 需 `.reload item_template`/`.reload creature_template` 或重启。
+4. **mysql 客户端脚本中途报错停止后续**：014 的 `||`（MySQL 是逻辑或）导致整个文件后半段（CREATE TABLE）没执行 → 打孔表缺失 → 宝石事件崩。**重要 DDL 单独执行或放文件开头**。
+5. **复杂数据生成用 Python 脚本**（gen_runes.py）：SQL JOIN+UNION 生成 33 条易列数不匹配。
+6. **Eluna DB 查询必须 pcall**：gem.lua v3 查不存在的表直接抛错崩事件（右键无反应），已全部加防御。
+7. gossip 菜单：creature gossip 需 GossipClearMenu 防叠加；item gossip 用 GossipSendMenu(1, item)。
+
+---
+
+## 五、数据资产清单
+
+### SQL（sql/local_changes/，按序重放）
+| 文件 | 内容 |
+|---|---|
+| 001-003 | 基建（NPC 190001 / admin rank4 / realmlist） |
+| 010_id_registry.sql | ARPG ID 段登记（锁段） |
+| 011_phase0_probes.sql | 探针测试：词缀池 9001→IRP117 + 测试紫装 950001（保留） |
+| 012_phase1_guide_vendor.sql | 905001 技能书 / 190105 随身商贩(+15货) / 190101 艾薇儿 |
+| 013_phase1_gems.sql | 四色宝石 901001-901020 + 书页 905002/书 905003 |
+| 014_phase1_rune_punch.sql | 符文 900001-900033 + 905010 打孔器 + 打孔表 DDL（⚠️ 该文件有 `||` bug，表已单独补建，重放时跳过错误段或只用末尾 DDL） |
+
+### Lua（server/bin/lua_scripts/）
+- 正式 3 个：welcome / test_gossip / super_hearthstone
+- arpg/ 7 个：city_crier / combine / gem(v3) / guide_npc / rune(v2 主菜单直列版) / socket / travel_vendor
+
+### 工具（工具/）
+- gen_equip_sql.py（远古/太古生成，已验证）
+- gen_runes.py（符文 33 条生成，含 905010）
+- gen_equip_test.sql（样例：910647/920647/910809/920809/910811/920811 已入库）
+
+### 物品 ID 段（已用）
+900001-900033 符文 / 901001-901020 四色宝石 / 904003（预留重铸石）/ 905001 技能书 / 905002 书页 / 905003 书 / 905010 打孔器 / 950001 测试紫装 / 910xxx/920xxx 远古太古样例 / NPC 190101 艾薇儿 / 190105 随身商贩
+
+### 已入库测试数据
+- 910647/920647（命运 远古/太古）、910809/920809、910811/920811
+- 950001 测试紫装（random_property=9001 → "of Twain" 双词缀）
+- 词缀池 item_enchantment_template 9001 → IRP 117
+
+---
+
+## 六、下一步工作
+
+### 立即（收尾阶段 1）
+1. `.reload eluna` 重测 1-4 符文（主菜单直列取下版）——用户已反馈待测
+2. 实测 1-8 打孔器（905010 → 打孔 → 双宝石）
+3. 开发 1-7 套装重铸（904003 重铸石：选中背包套装部件 → 同套其他部件，5% 消失；需 WorldDBQuery 查 item_template.set_id）
+4. 开发 1-9 传家宝符文激活（先查 Turtle 传家宝物品 entry）
+5. 9 项全过后更新阶段 1 门禁 → 计划书勾选
+
+### 后续
+- 阶段 2（B 级 9 项）：2a 词缀（复用 IRP 复合条目）/ 2b 三色球 / 2c 通货+远古太古（复用 gen_equip_sql.py）/ 2d 红装 / 2e 传奇宝石 / 2f 诅咒宝石 / 2g 副本门控 / 2h 赫拉迪克方块 / 2i 全职业宠物
+- 阶段 3：掉落整合 / 数值平衡 / G3 回归补测
+
+---
+
+## 七、重启与恢复（换机/重开会话）
+
+```bash
+# 1. 启动 MariaDB（3306，root/soulcore2026）
+"E:\11111\soulcore tortoise wow\mariadb\mariadb-11.4.4-winx64\bin\mariadbd.exe" --console --port=3306
+
+# 2. 启动服务端（PowerShell，独立进程）
+Start-Process -FilePath "E:\11111\soulcore tortoise wow\server\bin\realmd.exe" -WorkingDirectory "E:\11111\soulcore tortoise wow\server\bin"
+Start-Process -FilePath "E:\11111\soulcore tortoise wow\server\bin\mangosd.exe" -WorkingDirectory "E:\11111\soulcore tortoise wow\server\bin"
+
+# 3. 验证
+#    日志: [Lua] Loaded 10 Lua scripts（3 正式 + 7 arpg）
+#    测试角色 Free（GM admin/admin123 rank4）
+#    常用: .reload eluna / .reload item_template / .reload creature_template
+```
+
+**重开会话后立即检查**：
+- [ ] 服务端/DB 是否在跑（netstat 3724/8090/3306）
+- [ ] lua_scripts/arpg/ 7 个脚本是否完整
+- [ ] 阶段 1 遗留测试项（1-4 符文终测 / 1-8 打孔实测）是否已完成
+- [ ] 最新日志无 Lua ERROR
+
+---
+
+_维护：每完成一项更新"二、阶段 1 逐项状态"；新踩坑追加"四、踩坑记录"；SQL/lua 变更同步"五、数据资产清单"。_
