@@ -1,14 +1,13 @@
--- gem.lua v3 — 1-5 四色宝石（支持打孔双槽：槽3 基础 + 槽5 打孔后可用）
+-- gem.lua v3 — 1-5 四色宝石（支持打孔双槽：槽3 基础 + 槽4 打孔后可用）
 -- 阶段1 A级第5项 ｜ 依据：ARPG系统移植计划书.md 1-5/1-8
 -- v3 改进：读 soulcore_arpg_sockets 表判断装备宝石槽数（socket.lua 打孔）
--- v3.1：清理注释（槽位定稿：槽3 基础 / 槽4 符文 / 槽5 打孔扩展，互不冲突）
--- 机制：右键 → gossip 菜单选装备镶嵌 / 取下返还；附魔随装备持久
+-- 机制：右键 → gossip 菜单选装备镶嵌 / 取下返还；EQUIP_SPELL 随装备持久
 -- ⚠️ item use 返回 false 才阻止施法；item gossip 用 GossipSendMenu(1, item)
--- ⚠️ 注意：红宝石附魔 ID(68/69/70/106/107) 与符文 1-5 相同，黄/绿/紫同理——
---    ENCH2ENTRY 反向映射仅用于取下宝石返还，扫的是槽3/槽5，不会碰到符文槽4。
 
 local GEM_SLOT_BASE = 3     -- 基础槽 PROP_ENCHANTMENT_SLOT_0
-local GEM_SLOT_EXT = 5      -- 打孔扩展槽 PROP_ENCHANTMENT_SLOT_2（槽4 归符文，勿用）
+local GEM_SLOT_EXT = 4      -- 打孔后槽 PROP_ENCHANTMENT_SLOT_1（与符文槽共用 4？不行——符文用 4）
+-- ⚠️ 冲突：符文已占用槽4（rune.lua）。打孔扩展槽改用 5（PROP_ENCHANTMENT_SLOT_2）
+local GEM_SLOT_EXT = 5
 local MAX_SAME = 2
 local GEMS = {
     [901001] = { color = "red",    ench = {68, 69, 70, 106, 107} },

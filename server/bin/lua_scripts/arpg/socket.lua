@@ -1,13 +1,11 @@
 -- socket.lua — 1-8 拉玛兰迪打孔器（为装备打孔，增加宝石槽）
 -- 阶段1 A级第8项 ｜ 依据：ARPG系统移植计划书.md 1-8 / 素材01 系统13
 -- 机制：打孔记录 tw_char.soulcore_arpg_sockets (player_guid, item_guid, holes)
---       gem.lua 读该表决定装备可用宝石槽数（基础 1 槽=槽3，打孔后槽5 可用）
--- ⚠️ v2：MAX_HOLES 2→1。每件装备只有 1 个扩展宝石槽（槽5，槽4 归符文），
---      打 2 孔无槽可用纯浪费打孔器（计划书 1-8 验收仅需 +1 宝石）。
+--       gem.lua 读该表决定装备可用宝石槽数（基础 1 槽=槽3，打孔后槽4 也可用）
 -- ⚠️ item use 返回 false 才阻止施法；item gossip 用 GossipSendMenu(1, item)
 
 local PUNCHER = 905010      -- 拉玛兰迪的礼物
-local MAX_HOLES = 1         -- 每件装备最多打 1 孔（→ 2 颗宝石：槽3 + 槽5）
+local MAX_HOLES = 2         -- 每件装备最多 2 孔（+1 槽）
 
 local function GetHoles(playerGuid, itemGuid)
     local ok, q = pcall(function()
@@ -72,14 +70,7 @@ local function OnPuncherSelect(event, player, item, sender, action, code)
     end
     local pg, ig = player:GetGUIDLow(), target:GetGUIDLow()
     local holes = GetHoles(pg, ig) + 1
-    local ok, err = pcall(function()
-        return CharDBExecute("REPLACE INTO soulcore_arpg_sockets (player_guid, item_guid, holes) VALUES (" .. pg .. "," .. ig .. "," .. holes .. ")")
-    end)
-    if not ok then
-        player:SendBroadcastMessage("|cffff0000[打孔]|r 记录失败: " .. tostring(err))
-        player:GossipComplete()
-        return
-    end
+    CharDBExecute("REPLACE INTO soulcore_arpg_sockets (player_guid, item_guid, holes) VALUES (" .. pg .. "," .. ig .. "," .. holes .. ")")
     player:RemoveItem(PUNCHER, 1)
     player:SendBroadcastMessage("|cff00ff00[打孔]|r " .. (target:GetName() or "?") .. " 已打孔，现在可镶嵌 " .. (holes + 1) .. " 颗宝石")
     player:GossipComplete()
