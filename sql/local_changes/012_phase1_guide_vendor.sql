@@ -19,7 +19,7 @@ SELECT 905001, class, subclass, '技能书：随身商贩', description, display
        stat_type8, stat_value8, stat_type9, stat_value9, stat_type10, stat_value10, delay, range_mod,
        ammo_type, dmg_min1, dmg_max1, dmg_type1, dmg_min2, dmg_max2, dmg_type2, dmg_min3, dmg_max3,
        dmg_type3, dmg_min4, dmg_max4, dmg_type4, dmg_min5, dmg_max5, dmg_type5, block, armor, holy_res,
-       fire_res, nature_res, frost_res, shadow_res, arcane_res, 0, 0, spellcharges_1,
+       fire_res, nature_res, frost_res, shadow_res, arcane_res, 8690, 0, spellcharges_1,
        spellppmrate_1, spellcooldown_1, spellcategory_1, spellcategorycooldown_1, 0, 0,
        spellcharges_2, spellppmrate_2, spellcooldown_2, spellcategory_2, spellcategorycooldown_2,
        0, 0, spellcharges_3, spellppmrate_3, spellcooldown_3, spellcategory_3,

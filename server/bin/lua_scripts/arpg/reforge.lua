@@ -11,10 +11,20 @@ local REFORGE = 904003       -- 混沌重铸石
 local FAIL_RATE = 5          -- 5% 失败概率
 local MAX_LIST = 30          -- gossip 菜单最多列 30 件（超限分批）
 
--- 扫描背包（bag 0-4, slot 0-15），返回 entry 列表（去重，背包序）与 entry→Item 映射
+-- ⚠️ 随机播种（审计 2026-08-11）：Lua 5.2 math.random 未播种时序列固定（5% 失败/随机目标重启间不变）。
+--    幂等：共享 _G._ARPG_SEEDED，只播一次
+if not _G._ARPG_SEEDED then
+    math.randomseed(os.time())
+    _G._ARPG_SEEDED = true
+end
+
+-- 扫描背包（主背包 255 + 包袋 19-22，slot 0-15），返回 entry 列表（去重，背包序）与 entry→Item 映射
+-- ⚠️ 引擎 GetItemByPos 只认 bag=255（INVENTORY_SLOT_BAG_0, Player.h:583）或 19-22（包袋位，
+--    Player.h:612-613）；bag=0-4 恒返回 nil（踩坑：审计 2026-08-11 实锤 Player.cpp:10513-10527）
+local BAGS = {255, 19, 20, 21, 22}
 local function ScanBag(player)
     local entries, itemMap = {}, {}
-    for bag = 0, 4 do
+    for _, bag in ipairs(BAGS) do
         for slot = 0, 15 do
             local ok, item = pcall(function()
                 return player:GetItemByPos(bag, slot)
@@ -120,14 +130,16 @@ local function DoReforge(player, item, entry, info)
     end
 
     player:RemoveItem(entry, 1)
-    local ok, err = pcall(function()
+    -- ⚠️ PlayerAddItem 返回布尔（TurtleLuaEngine.cpp:5284）：pcall 第一个返回是 pcall 状态（恒 true），
+    --    第二个才是 AddItem 结果。满包时 AddItem 返回 false（Player.cpp:23943 返回 nullptr）→ 需返还原物品
+    local ok, added = pcall(function()
         return player:AddItem(target.entry, 1)
     end)
-    if ok then
+    if ok and added then
         player:SendBroadcastMessage("|cff00ff00[重铸]|r " .. (info.name or "?") .. " → |cff66ccff" .. (target.name or ("物品 " .. target.entry)) .. "|r（同套装转换）")
     else
         player:AddItem(entry, 1)            -- 兜底：失败返还原物品
-        player:SendBroadcastMessage("|cffff0000[重铸]|r 转换失败: " .. tostring(err) .. "（已返还原物品）")
+        player:SendBroadcastMessage("|cffff0000[重铸]|r 转换失败（背包已满或无空间），已返还原物品")
     end
     player:GossipComplete()
 end

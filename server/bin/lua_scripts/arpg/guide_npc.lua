@@ -21,9 +21,16 @@ local function GossipSelect(event, player, creature, sender, intid, code)
         if player:HasItem(VENDOR_BOOK) then
             player:SendBroadcastMessage("[艾薇儿] 你已经领过随身商贩了，去使用它吧！")
         else
-            player:AddItem(VENDOR_BOOK, 1)
-            player:SendBroadcastMessage("|cff00ff00[艾薇儿]|r 送你一本《技能书：随身商贩》，右键使用可召唤随身商贩，90 秒后消失。")
-            player:SendBroadcastMessage("|cffff6600[提示]|r 以后可在拍卖行/副本门口随时召唤商贩，方便清理背包。")
+            -- ⚠️ AddItem 返回布尔（L5284），满包 false → 不发奖励但允许重新领（不置 HasItem 状态）
+            local ok, added = pcall(function()
+                return player:AddItem(VENDOR_BOOK, 1)
+            end)
+            if ok and added then
+                player:SendBroadcastMessage("|cff00ff00[艾薇儿]|r 送你一本《技能书：随身商贩》，右键使用可召唤随身商贩，90 秒后消失。")
+                player:SendBroadcastMessage("|cffff6600[提示]|r 以后可在拍卖行/副本门口随时召唤商贩，方便清理背包。")
+            else
+                player:SendBroadcastMessage("|cffff0000[艾薇儿]|r 背包已满，无法领取技能书！清出空间后再来。")
+            end
         end
     elseif intid == 2 then
         player:SendBroadcastMessage("|cff00ff00[ARPG 玩法]|r 本服移植了暗黑3/流放之路玩法：符文、传奇宝石、三色球、混沌石升级装备、红装、副本通行证等，详见后续更新。")

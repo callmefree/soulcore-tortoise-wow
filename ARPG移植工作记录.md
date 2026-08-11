@@ -10,13 +10,13 @@
 
 | 项 | 状态 |
 |---|---|
-| 服务端 | ✅ 运行中（realmd 3724 / mangosd 8090 / MariaDB 3306，mangosd 本次重启加载新脚本） |
+| 服务端 | ⏸️ 当前未运行（mangosd/realmd 停；MariaDB 3306 运行中） |
 | 阶段 0（技术探针） | ✅ **全部完成，门禁通过** |
 | 阶段 1（A 级 9 项） | 🔄 **9 项全部开发完成，4 项待游戏内实测**（1-4 符文 / 1-7 重铸 / 1-8 打孔 / 1-9 门控） |
 | lua_scripts/arpg/ | **9 个脚本**已部署（city_crier/combine/gate/gem/guide_npc/reforge/rune/socket/travel_vendor） |
-| local_changes SQL | **12 个文件（001-003 基建 + 010-017 ARPG，016/017 本轮恢复/新增）** |
+| local_changes SQL | **11 个文件（001-003 基建 + 010-018 ARPG；015 已删、018 为 sockets DDL 重建，2026-08-11 审计补回）** |
 | 自定义表（tw_char） | soulcore_arpg_sockets（打孔）、soulcore_hearthstone（炉石）、soulcore_arpg_gate（门控） |
-| 版本控制 | ✅ git（HEAD=c06dae8 用户撤回后，本轮改动待提交） |
+| 版本控制 | ✅ git（HEAD=c21634b 已提交；工作记录 c06dae8 为旧值，2026-08-11 审计修正） |
 
 **本次推进会（2026-08-10 重开）已完成**：
 1. **环境恢复**：mangosd 未跑 → 重启加载全部脚本（8090 正常监听，无死循环）；git HEAD=c06dae8（用户已手动撤回推进会运行修改：gate.lua 删/016 删/socket.gem 回退）
@@ -147,7 +147,7 @@
 2. **实测 1-8 打孔器**（socket.lua v3）：
    - `.additem 905010` → 右键 → 列表出现装备（当前 1/2 槽）→ 打孔 → 消耗 1 打孔器 + holes=1
    - 再用宝石右键 → 该装备出现槽5 → 镶第 2 颗宝石 → 属性叠加
-   - 重登后双宝石仍在（持久性）；打孔后菜单显示 2/2 槽
+   - 重登后双宝石仍在（持久性）；打孔后装备在菜单中不再可打孔（holes=1 已达 MAX_HOLES，文案显示"当前 1/2 槽"）
 3. **实测 1-9 符文门控**（gate.lua v2）：
    - 无符文：`.additem 905004` → 右键 → 拒绝提示"需要持有符文：Ber"，卷轴不消耗
    - 持符文：`.additem 900030` → 再右键卷轴 → 激活成功 → 卷轴 -1 + 随机 1 级宝石

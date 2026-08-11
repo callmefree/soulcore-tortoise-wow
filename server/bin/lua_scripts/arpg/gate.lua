@@ -16,6 +16,13 @@ local GATE = {}
 local NAME_CACHE = {}         -- entry → 物品名（符文/奖励）
 local GEM_LV1 = {901001, 901006, 901011, 901016}  -- 四色 1 级宝石
 
+-- ⚠️ 随机播种（审计 2026-08-11）：Lua 5.2 math.random 未播种时序列固定，服务端重启间随机结果不变。
+--    幂等播种：多个脚本共享 _G._ARPG_SEEDED，只播一次（os.time 毫秒级变化）
+if not _G._ARPG_SEEDED then
+    math.randomseed(os.time())
+    _G._ARPG_SEEDED = true
+end
+
 -- 缓存物品名（pcall：查询失败返回 0 时用兜底名）
 local function CacheName(entry)
     if NAME_CACHE[entry] then return end
@@ -65,17 +72,20 @@ local function OnGateUse(event, player, item)
     end
 
     -- 激活成功：消耗门控物品 + 发奖励
+    -- ⚠️ PlayerAddItem 返回布尔（TurtleLuaEngine.cpp:5284）：pcall 第一个返回是 pcall 状态（恒 true），
+    --    第二个才是 AddItem 结果。满包时 AddItem 返回 false（Player.cpp:23943 返回 nullptr）→ 卷轴已扣须返还
     local reward = cfg.reward
     if reward == 0 then reward = GEM_LV1[math.random(#GEM_LV1)] end
     CacheName(reward)
     player:RemoveItem(entry, 1)
-    local ok, err = pcall(function()
+    local ok, added = pcall(function()
         return player:AddItem(reward, 1)
     end)
-    if ok then
+    if ok and added then
         player:SendBroadcastMessage("|cff00ff00[门控]|r 激活成功！获得 |cff66ccff" .. (NAME_CACHE[reward] or ("物品 " .. reward)) .. "|r")
     else
-        player:SendBroadcastMessage("|cffff0000[门控]|r 激活失败: " .. tostring(err))
+        player:AddItem(entry, 1)   -- 返还被门控物品（背包满等失败场景）
+        player:SendBroadcastMessage("|cffff0000[门控]|r 激活失败（背包已满或无空间），已返还卷轴")
     end
     return false
 end

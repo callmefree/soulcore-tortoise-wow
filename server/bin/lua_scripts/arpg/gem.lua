@@ -5,8 +5,7 @@
 -- ⚠️ item use 返回 false 才阻止施法；item gossip 用 GossipSendMenu(1, item)
 
 local GEM_SLOT_BASE = 3     -- 基础槽 PROP_ENCHANTMENT_SLOT_0
-local GEM_SLOT_EXT = 4      -- 打孔后槽 PROP_ENCHANTMENT_SLOT_1（与符文槽共用 4？不行——符文用 4）
--- ⚠️ 冲突：符文已占用槽4（rune.lua）。打孔扩展槽改用 5（PROP_ENCHANTMENT_SLOT_2）
+-- ⚠️ 打孔扩展槽=5（PROP_ENCHANTMENT_SLOT_2）：槽4 归符文（rune.lua），勿改（审计 2026-08-11）
 local GEM_SLOT_EXT = 5
 local MAX_SAME = 2
 local GEMS = {
@@ -158,8 +157,19 @@ local function DoRemove(player, idx)
         return g.item:ClearEnchantment(g.slot)
     end)
     if ok then
-        if g.entry then player:AddItem(g.entry, 1) end
-        player:SendBroadcastMessage("|cff00ff00[宝石]|r 已取下并返还宝石")
+        if g.entry then
+            -- ⚠️ AddItem 返回布尔（L5284），满包 false → 附魔已清但宝石没返还，须提示
+            local ok2, added = pcall(function()
+                return player:AddItem(g.entry, 1)
+            end)
+            if ok2 and added then
+                player:SendBroadcastMessage("|cff00ff00[宝石]|r 已取下并返还宝石")
+            else
+                player:SendBroadcastMessage("|cffff0000[宝石]|r 已取下但背包已满，宝石未能返还！")
+            end
+        else
+            player:SendBroadcastMessage("|cff00ff00[宝石]|r 已取下宝石")
+        end
     else
         player:SendBroadcastMessage("|cffff0000[宝石]|r 取下失败: " .. tostring(err))
     end

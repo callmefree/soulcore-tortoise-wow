@@ -10,6 +10,13 @@ local RUNES = {
     195, 196, 197, 203, 205,
 }
 -- RUNES[1]=900001 El ... RUNES[33]=900033 Zod
+-- ⚠️ 词缀冲突修复（审计 2026-08-11）：SetItemRandomProperties 会把随机词缀写进槽3/4/5
+--    （Item.cpp:787-788），槽4 的 enchant id 可能是词缀而非符文。只有 eid 落在符文池
+--    （RUNES 值域）才算"已镶符文"，否则视为词缀占位——不列取下、不当空槽目标、不清除。
+local ENCH2ENTRY = {}
+for i, e in ipairs(RUNES) do
+    ENCH2ENTRY[e] = 900000 + i
+end
 
 local function OnRuneUse(event, player, item)
     local entry = item:GetEntry()
@@ -22,11 +29,12 @@ local function OnRuneUse(event, player, item)
         local eq = player:GetEquippedItemBySlot(slot)
         if eq then
             local eid = eq:GetEnchantmentId(RUNE_SLOT)
-            if eid and eid > 0 then
+            if eid and ENCH2ENTRY[eid] then
                 gemmed[#gemmed + 1] = eq
-            elseif not target then
-                target = eq
+            elseif not (eid and eid > 0) then
+                if not target then target = eq end
             end
+            -- eid>0 但非符文（随机词缀占槽4）→ 跳过：既不列取下，也不当镶嵌目标
         end
     end
 
@@ -45,27 +53,6 @@ local function OnRuneUse(event, player, item)
     return false
 end
 
--- 取下子菜单：列出所有有符文的装备
-local function ShowRuneRemoveMenu(player, item)
-    player:GossipClearMenu()
-    local listed = 0
-    for slot = 0, 18 do
-        local eq = player:GetEquippedItemBySlot(slot)
-        if eq then
-            local eid = eq:GetEnchantmentId(RUNE_SLOT)
-            if eid and eid > 0 then
-                listed = listed + 1
-                player:GossipMenuAddItem(0, "取下 " .. (eq:GetName() or "?") .. " 的符文", 1, 200 + listed)
-            end
-        end
-    end
-    if listed == 0 then
-        player:GossipMenuAddItem(0, "没有已镶嵌的符文", 1, 99)
-    end
-    player:GossipMenuAddItem(0, "返回", 1, 0)
-    player:GossipSendMenu(1, item)
-end
-
 -- 取下指定第 idx 件有符文的装备
 local function DoRuneRemove(player, idx)
     local listed = 0
@@ -73,19 +60,23 @@ local function DoRuneRemove(player, idx)
         local eq = player:GetEquippedItemBySlot(slot)
         if eq then
             local eid = eq:GetEnchantmentId(RUNE_SLOT)
-            if eid and eid > 0 then
+            if eid and ENCH2ENTRY[eid] then
                 listed = listed + 1
                 if listed == idx then
+                    local back = ENCH2ENTRY[eid]
                     local ok, err = pcall(function()
                         return eq:ClearEnchantment(RUNE_SLOT)
                     end)
                     if ok then
-                        local back = 0
-                        for i, e in ipairs(RUNES) do
-                            if e == eid then back = 900000 + i break end
+                        -- ⚠️ AddItem 返回布尔（L5284），满包 false → 附魔已清但符文没返还，须提示
+                        local ok2, added = pcall(function()
+                            return player:AddItem(back, 1)
+                        end)
+                        if ok2 and added then
+                            player:SendBroadcastMessage("|cff00ff00[符文]|r 已取下 " .. (eq:GetName() or "?") .. " 的符文并返还")
+                        else
+                            player:SendBroadcastMessage("|cffff0000[符文]|r 已取下但背包已满，符文未能返还！")
                         end
-                        if back > 0 then player:AddItem(back, 1) end
-                        player:SendBroadcastMessage("|cff00ff00[符文]|r 已取下 " .. (eq:GetName() or "?") .. " 的符文并返还")
                     else
                         player:SendBroadcastMessage("|cffff0000[符文]|r 取下失败: " .. tostring(err))
                     end
@@ -105,7 +96,7 @@ local function OnRuneSelect(event, player, item, sender, action, code)
 
     if sender == 0 then
         if action == 1 then
-            -- 镶嵌：找第一件空符文槽装备
+            -- 镶嵌：找第一件空符文槽装备（词缀占槽4 的装备不当目标）
             local target = nil
             for slot = 0, 18 do
                 local eq = player:GetEquippedItemBySlot(slot)
@@ -133,25 +124,29 @@ local function OnRuneSelect(event, player, item, sender, action, code)
             end
             player:GossipComplete()
         elseif action >= 200 then
-            -- 直接取下第 (action-200) 个带符文装备
+            -- 直接取下第 (action-200) 个带符文装备（只认符文池，跳过词缀占位）
             local listed = 0
             for slot = 0, 18 do
                 local eq = player:GetEquippedItemBySlot(slot)
                 if eq then
                     local eid = eq:GetEnchantmentId(RUNE_SLOT)
-                    if eid and eid > 0 then
+                    if eid and ENCH2ENTRY[eid] then
                         listed = listed + 1
                         if listed == action - 200 then
+                            local back = ENCH2ENTRY[eid]
                             local ok, err = pcall(function()
                                 return eq:ClearEnchantment(RUNE_SLOT)
                             end)
                             if ok then
-                                local back = 0
-                                for i, e in ipairs(RUNES) do
-                                    if e == eid then back = 900000 + i break end
+                                -- ⚠️ AddItem 返回布尔（L5284），满包 false → 附魔已清但符文没返还，须提示
+                                local ok2, added = pcall(function()
+                                    return player:AddItem(back, 1)
+                                end)
+                                if ok2 and added then
+                                    player:SendBroadcastMessage("|cff00ff00[符文]|r 已取下 " .. (eq:GetName() or "?") .. " 的符文并返还")
+                                else
+                                    player:SendBroadcastMessage("|cffff0000[符文]|r 已取下但背包已满，符文未能返还！")
                                 end
-                                if back > 0 then player:AddItem(back, 1) end
-                                player:SendBroadcastMessage("|cff00ff00[符文]|r 已取下 " .. (eq:GetName() or "?") .. " 的符文并返还")
                             else
                                 player:SendBroadcastMessage("|cffff0000[符文]|r 取下失败: " .. tostring(err))
                             end

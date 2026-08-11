@@ -16,12 +16,21 @@ local LINES = {
     "世界频道：夜色镇又被亡灵偷袭了，守卫呢？！",
 }
 
+-- ⚠️ 随机播种（审计 2026-08-11）：台词随机需真随机。幂等：共享 _G._ARPG_SEEDED
+if not _G._ARPG_SEEDED then
+    math.randomseed(os.time())
+    _G._ARPG_SEEDED = true
+end
+
 local function CrierTick()
     local line = LINES[math.random(#LINES)]
     SendWorldMessage(line)
 end
 
--- 启动 30 秒后开始循环（等服务端完全就绪），之后每 4 分钟一条
-CreateLuaEvent(CrierTick, 30000, 0)
+-- ⚠️ 本引擎 CreateLuaEvent → CreateTimedEvent（TurtleLuaEngine.cpp:20581-20600）：
+--    delay 即**固定重复间隔**（minDelay=maxDelay=delay），repeats=0 → remaining=-1 无限。
+--    之前误传 30000（30 秒）导致开服即刷屏（审计 2026-08-11 实锤），必须传 4 分钟。
+-- 启动 4 分钟后开始循环，之后每 4 分钟一条
+CreateLuaEvent(CrierTick, CRIER_DELAY, 0)
 
 print("[ARPG] city_crier.lua loaded — 主城喊话已启动")

@@ -7,6 +7,12 @@ local PAGE = 905002   -- 宝石书页
 local BOOK = 905003   -- 宝石书
 local LV1_GEMS = { 901001, 901006, 901011, 901016 }  -- 1 级四色宝石
 
+-- ⚠️ 随机播种（审计 2026-08-11）：随机宝石需真随机。幂等：共享 _G._ARPG_SEEDED
+if not _G._ARPG_SEEDED then
+    math.randomseed(os.time())
+    _G._ARPG_SEEDED = true
+end
+
 -- 书页 3 合 1 → 书
 local function OnPageUse(event, player, item)
     if not player or not item then return true end
@@ -16,8 +22,16 @@ local function OnPageUse(event, player, item)
         return false
     end
     player:RemoveItem(PAGE, 3)
-    player:AddItem(BOOK, 1)
-    player:SendBroadcastMessage("|cff00ff00[合成]|r 3 张书页 → 1 本宝石书")
+    -- ⚠️ AddItem 返回布尔（L5284），满包 false → 书页已扣但书没给，须返还
+    local ok, added = pcall(function()
+        return player:AddItem(BOOK, 1)
+    end)
+    if ok and added then
+        player:SendBroadcastMessage("|cff00ff00[合成]|r 3 张书页 → 1 本宝石书")
+    else
+        player:AddItem(PAGE, 3)
+        player:SendBroadcastMessage("|cffff0000[合成]|r 合成失败（背包已满），书页已返还")
+    end
     return false
 end
 
@@ -26,8 +40,16 @@ local function OnBookUse(event, player, item)
     if not player or not item then return true end
     local gem = LV1_GEMS[math.random(#LV1_GEMS)]
     player:RemoveItem(BOOK, 1)
-    player:AddItem(gem, 1)
-    player:SendBroadcastMessage("|cff00ff00[合成]|r 宝石书开启，获得 1 颗随机 1 级四色宝石")
+    -- ⚠️ AddItem 返回布尔（L5284），满包 false → 书已扣但宝石没给，须返还
+    local ok, added = pcall(function()
+        return player:AddItem(gem, 1)
+    end)
+    if ok and added then
+        player:SendBroadcastMessage("|cff00ff00[合成]|r 宝石书开启，获得 1 颗随机 1 级四色宝石")
+    else
+        player:AddItem(BOOK, 1)
+        player:SendBroadcastMessage("|cffff0000[合成]|r 开启失败（背包已满），宝石书已返还")
+    end
     return false
 end
 
