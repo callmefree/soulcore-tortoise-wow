@@ -33,7 +33,7 @@ local function GossipSelect(event, player, creature, sender, intid, code)
             end
         end
     elseif intid == 2 then
-        player:SendBroadcastMessage("|cff00ff00[ARPG 玩法]|r 本服移植了暗黑3/流放之路玩法：符文、传奇宝石、三色球、混沌石升级装备、红装、副本通行证等，详见后续更新。")
+        player:SendBroadcastMessage("|cff00ff00[ARPG 玩法]|r 本服移植了暗黑3/流放之路玩法：装备词缀、三色球、混沌石升级装备、红装、副本通行证等，详见后续更新。")
     elseif intid == 3 then
         -- 再见
     end
