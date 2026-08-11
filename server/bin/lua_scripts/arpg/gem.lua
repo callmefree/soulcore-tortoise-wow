@@ -47,7 +47,11 @@ local function GetSlots(eq, playerGuid)
     return slots
 end
 
--- 扫描装备：空槽 + 已嵌
+-- 扫描装备：空槽 + 已嵌（只认宝石池，词缀占位跳过）
+-- ⚠️ 词缀冲突修复（审计 2026-08-11）：SetItemRandomProperties 会把随机词缀写进槽3/4/5
+--    （Item.cpp:787-788）。槽3/5 的 enchant id 可能是词缀而非宝石——只有 eid 落在宝石池
+--    （ENCH2ENTRY 值域）才算"已嵌宝石"；词缀占位（eid>0 但非宝石）→ 跳过：
+--    不当空槽（防镶嵌覆盖词缀）、不列取下（防 ClearEnchantment 误清词缀）。
 local function ScanEquip(player)
     local pg = player:GetGUIDLow()
     local empty, gemmed = {}, {}
@@ -58,12 +62,13 @@ local function ScanEquip(player)
             local filled = 0
             for _, s in ipairs(slots) do
                 local eid = eq:GetEnchantmentId(s)
-                if eid and eid > 0 then
+                if eid and ENCH2ENTRY[eid] then
                     filled = filled + 1
                     gemmed[#gemmed + 1] = { item = eq, slot = s, ench = eid, entry = ENCH2ENTRY[eid] }
-                else
+                elseif not (eid and eid > 0) then
                     empty[#empty + 1] = { item = eq, slot = s }
                 end
+                -- eid>0 但非宝石（随机词缀占槽3/5）→ 跳过
             end
             -- 简化显示：一件装备只列一次（若至少有一个空槽）
         end
