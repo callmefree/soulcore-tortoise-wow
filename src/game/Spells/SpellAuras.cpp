@@ -287,8 +287,8 @@ pAuraHandler AuraHandler[TOTAL_AURAS] =
     &Aura::HandlePeriodicTriggerSpellWithValue,              //218 SPELL_AURA_PERIODIC_TRIGGER_SPELL2
     &Aura::HandleUnused,                                    //219 SPELL_AURA_219
     &Aura::HandleNoImmediateEffect,                         //220 SPELL_AURA_MOD_DAMAGE_TAKEN_FROM_CASTER_PET implemented in Unit::MeleeDamageBonusTaken and SpellDamageBonusTaken
-    &Aura::HandleAuraModAttackPower,                        //221 SPELL_AURA_MOD_ATTACK_POWER_AREA
-    &Aura::HandleAuraModAttackPowerPercent,                 //222 SPELL_AURA_MOD_ATTACK_POWER_PERCENT_AREA
+    &Aura::HandleAuraModAttackPowerArea,                    //221 SPELL_AURA_MOD_ATTACK_POWER_AREA
+    &Aura::HandleAuraModAttackPowerPercentArea,             //222 SPELL_AURA_MOD_ATTACK_POWER_PERCENT_AREA
     &Aura::HandleNoImmediateEffect,                         //223 SPELL_AURA_MOD_ITEM_PROC_CHANCE implemented in Player::CastItemCombatSpell
     &Aura::HandleNoImmediateEffect,                         //224 SPELL_AURA_MOD_BLOCK_DAMAGE_PERCENT implemented in Unit::CalculateAbsorbResistBlock
     &Aura::HandleNoImmediateEffect,                         //225 SPELL_AURA_MOD_GATHERING_ITEM_CHANCE
@@ -1117,6 +1117,8 @@ void Aura::TriggerSpell()
                         Item* item = ((Player*)triggerTarget)->GetWeaponForAttack(BASE_ATTACK);
                         if (!item)
                             return;
+                        if (item->CanBeTradedEvenIfSoulBound())
+                            return;
                         uint32 enchant_id = 0;
                         switch (GetId())
                         {
@@ -1761,7 +1763,7 @@ void Aura::HandleAuraDummy(bool apply, bool Real)
                                 else
                                 {
                                     // If there is no nearby graveyard, player's ghost would spawn at the same spot.
-                                    WorldSafeLocsEntry const *ClosestGrave = casterPlayer->GetTeamId() ? sWorldSafeLocsStore.LookupEntry(10) : sWorldSafeLocsStore.LookupEntry(4);
+                                    WorldSafeLocsEntry const *ClosestGrave = casterPlayer->GetTeamId() ? sWorldSafeLocsStore.LookupEntry(9) : sWorldSafeLocsStore.LookupEntry(4);
                                     if (ClosestGrave)
                                     {
                                         casterPlayer->SetHealth(1);
@@ -4217,21 +4219,9 @@ uint32 Aura::CalculateDotDamage() const
         case SPELLFAMILY_ROGUE:
         {
             // World of Warcraft Client Patch 1.12.0 (2006-08-22)
-            // - Rupture: Rupture now increases in potency with greater attack power.
-            if (spellProto->IsFitToFamilyMask<CF_ROGUE_RUPTURE>())
-            {
-                // Dmg/tick = $AP*min(0.01*$cp, 0.03) [Like Rip: only the first three CP increase the contribution from AP]
-                if (caster->IsPlayer())
-                {
-                    uint8 cp = ((Player*)caster)->GetComboPoints();
-                    if (cp > 3) cp = 3;
-                    damage += int32(caster->GetTotalAttackPowerValue(BASE_ATTACK) * cp / 100);
-                }
-            }
-            // World of Warcraft Client Patch 1.12.0 (2006-08-22)
             // - Garrote: The damage from this ability has been increased. In
             //   addition, Garrote now increases in potency with greater attack power.
-            else if (spellProto->IsFitToFamilyMask<CF_ROGUE_GARROTE>())
+            if (spellProto->IsFitToFamilyMask<CF_ROGUE_GARROTE>())
                 damage += int32(caster->GetTotalAttackPowerValue(BASE_ATTACK) * 0.03f);
             break;
         }
@@ -5152,6 +5142,12 @@ void Aura::HandleAuraModAttackPower(bool apply, bool /*Real*/)
     CheckRangedOverrides(GetTarget(), this, apply, m_modifier.m_amount);
 }
 
+void Aura::HandleAuraModAttackPowerArea(bool apply, bool Real)
+{
+    HandleAuraModAttackPower(apply, Real);
+    GetTarget()->HandleAttackPowerModifier(RANGED_AP_MODS, IsPositive() ? AP_MOD_POSITIVE_FLAT : AP_MOD_NEGATIVE_FLAT, m_modifier.m_amount, apply);
+}
+
 void Aura::HandleAuraModRangedAttackPower(bool apply, bool /*Real*/)
 {
     if ((GetTarget()->GetClassMask() & CLASSMASK_WAND_USERS) != 0)
@@ -5178,6 +5174,12 @@ void Aura::HandleAuraModAttackPowerPercent(bool apply, bool /*Real*/)
 
     // UNIT_FIELD_ATTACK_POWER_MULTIPLIER = multiplier - 1
     GetTarget()->HandleAttackPowerModifier(MELEE_AP_MODS, AP_MOD_PCT, m_modifier.m_amount, apply);
+}
+
+void Aura::HandleAuraModAttackPowerPercentArea(bool apply, bool Real)
+{
+    HandleAuraModAttackPowerPercent(apply, Real);
+    GetTarget()->HandleAttackPowerModifier(RANGED_AP_MODS, AP_MOD_PCT, m_modifier.m_amount, apply);
 }
 
 void Aura::HandleAuraModRangedAttackPowerPercent(bool apply, bool /*Real*/)
@@ -5884,7 +5886,15 @@ void Aura::PeriodicTick(SpellEntry const* sProto, AuraType auraType, uint32 data
 
             cleanDamage.absorb = absorb;
             cleanDamage.resist = resist;
-            pCaster->DealDamage(target, pdamage, &cleanDamage, DOT, spellProto->GetSpellSchoolMask(), spellProto, true, nullptr, true, GetHolder()->IsReflected());
+
+            bool addThreat = true;
+            if (GetAuraScript())
+                GetAuraScript()->OnPeriodicDamageBeforeDeal(this, pdamage, &cleanDamage, addThreat);
+
+            uint32 const dealtDamage = pCaster->DealDamage(target, pdamage, &cleanDamage, DOT, spellProto->GetSpellSchoolMask(), spellProto, true, nullptr, addThreat, GetHolder()->IsReflected());
+
+            if (GetAuraScript())
+                GetAuraScript()->OnPeriodicDamageAfterDeal(this, dealtDamage, &cleanDamage);
             // Curse of Doom: If the target dies from this damage, there is a chance that a Doomguard will be summoned.
             if (spellProto->Id == 603 && !target->IsAlive() && !urand(0, 9))
                 pCaster->CastSpell(pCaster, 18662, true);

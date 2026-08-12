@@ -3668,7 +3668,19 @@ uint32 WorldObject::GetWeaponSkillValue(WeaponAttackType attType, WorldObject co
         return pPlayer->GetSkillValue(skill);
     }
 
-    return GetUnitMeleeSkill(target);
+    uint32 skill = GetUnitMeleeSkill(target);
+    if (Pet const* pet = ToPet())
+    {
+        if (Unit const* owner = pet->GetOwner())
+        {
+            if (owner->HasAura(51555))      // Bestial Precision Rank 2
+                skill += 10;
+            else if (owner->HasAura(51554)) // Bestial Precision Rank 1
+                skill += 5;
+        }
+    }
+
+    return skill;
 }
 
 uint32 WorldObject::GetDefenseSkillValue(WorldObject const* target) const
@@ -4290,7 +4302,18 @@ void WorldObject::SendHealSpellLog(Unit const* pVictim, uint32 SpellID, uint32 D
 
 void WorldObject::EnergizeBySpell(Unit* pVictim, uint32 spellId, uint32 amount, Powers powerType)
 {
-    SendEnergizeSpellLog(pVictim, spellId, amount, powerType);
+    uint32 logAmount = amount;
+    if (powerType == POWER_MANA && logAmount)
+    {
+        int32 const manaGainMod = pVictim->GetTotalAuraModifier(SPELL_AURA_MOD_MANA_GAIN_PERCENT);
+        if (manaGainMod)
+        {
+            float const multiplier = std::max(0.0f, (100.0f + manaGainMod) / 100.0f);
+            logAmount = uint32(float(logAmount) * multiplier);
+        }
+    }
+
+    SendEnergizeSpellLog(pVictim, spellId, logAmount, powerType);
 
     // Turtle: threat from power gains as per RMJ's explanations
     if (Unit* pUnit = ToUnit())
@@ -4305,7 +4328,7 @@ void WorldObject::EnergizeBySpell(Unit* pVictim, uint32 spellId, uint32 amount, 
                 multiplier = 0.5f;
                 break;
         }
-        pVictim->GetHostileRefManager().threatAssist(pUnit, amount * multiplier, sSpellMgr.GetSpellEntry(spellId));
+        pVictim->GetHostileRefManager().threatAssist(pUnit, logAmount * multiplier, sSpellMgr.GetSpellEntry(spellId));
     }
 
     // needs to be called after sending spell log
@@ -4867,6 +4890,7 @@ uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellP
 
     float DoneTotalMod = 1.0f;
     int32 DoneTotal = 0;
+    int32 DoneTotalNoCoeff = 0;
     Item*  pWeapon = GetTypeId() == TYPEID_PLAYER ? ((Player*)this)->GetWeaponForAttack(BASE_ATTACK, true, false) : nullptr;
 
     // Creature damage
@@ -4932,6 +4956,41 @@ uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellP
                 continue;
             switch (i->GetModifier()->m_miscvalue)
             {
+                case 5066:
+                {
+                    if (!owner->HasAura(51578))
+                        DoneTotalMod += i->GetModifier()->m_amount / 100.0f;
+                    break;
+                }
+                case 5067: // Trap Mastery
+                {
+                    DoneTotalMod += i->GetModifier()->m_amount / 100.0f;
+                    break;
+                }
+                case 5068: // Untamed Trapper
+                {
+                    float const attackPower = owner->GetTotalAttackPowerValue(BASE_ATTACK);
+                    switch (spellProto->Id)
+                    {
+                        case 13797:
+                        case 14298:
+                        case 14299:
+                        case 14300:
+                        case 14301:
+                            if (effectIndex == EFFECT_INDEX_0)
+                                DoneTotalNoCoeff += int32(attackPower / 10.0f);
+                            break;
+                        case 13812:
+                        case 14314:
+                        case 14315:
+                            if (effectIndex == EFFECT_INDEX_0)
+                                DoneTotalNoCoeff += int32(attackPower / 6.5f);
+                            else if (effectIndex == EFFECT_INDEX_1)
+                                DoneTotalNoCoeff += int32(attackPower / 30.0f);
+                            break;
+                    }
+                    break;
+                }
                 case 4418: // Increased Shock Damage
                 case 4554: // Increased Lightning Damage
                 {
@@ -4976,7 +5035,7 @@ uint32 WorldObject::SpellDamageBonusDone(Unit* pVictim, SpellEntry const* spellP
     // apply ap bonus and benefit affected by spell power implicit coeffs and spell level penalties
     DoneTotal = SpellBonusWithCoeffs(spellProto, effectIndex, DoneTotal, DoneAdvertisedBenefit, 0, damagetype, true, this, spell);
 
-    float tmpDamage = (int32(pdamage) + DoneTotal * int32(stack)) * DoneTotalMod;
+    float tmpDamage = (int32(pdamage) + (DoneTotal + DoneTotalNoCoeff) * int32(stack)) * DoneTotalMod;
     // apply spellmod to Done damage (flat and pct)
     if (pUnit)
     {

@@ -34,6 +34,7 @@
 #include <optional>
 
 struct AreaTriggerEntry;
+struct CleanDamage;
 class Aura;
 class Object;
 class Unit;
@@ -1386,8 +1387,10 @@ struct SpellScript
     virtual void OnSuccessfulFinish(Spell* /*spell*/) const {}
     virtual void OnFinish(Spell* /*spell*/, bool /*ok*/) const {}
     virtual SpellCastResult OnCheckCast(Spell* /*spell*/, bool /*strict*/) const { return SPELL_CAST_OK; }
+    virtual bool OnCanCastNonCombatSpellInCombat(Spell* /*spell*/) const { return false; }
     virtual std::optional<uint32> OnCalculatePowerCost(SpellEntry const* /*spellInfo*/, Unit* /*caster*/, Spell* /*spell*/, Item* /*castItem*/) const { return std::nullopt; }
     virtual bool OnTakePower(Spell* /*spell*/) const { return true; }
+    virtual bool OnTakeAmmo(Spell* /*spell*/) const { return true; }
     virtual void OnEffectDamageCalculate(Spell* /*spell*/, SpellEffectIndex /*effIdx*/, float& /*damage*/) const {}
     virtual void OnSpellCritChanceCalculate(Spell* /*spell*/, Unit const* /*victim*/, float& /*critChance*/) const {}
     virtual bool OnEffectHealCalculate(Spell* /*spell*/, SpellEffectIndex /*effIdx*/, int32& /*heal*/) const { return true; }
@@ -1430,6 +1433,8 @@ struct AuraScript
     virtual void OnManaAbsorb(Aura* /*aura*/, int32& /*currentAbsorb*/, int32& /*remainingDamage*/) {}
     virtual void OnPeriodicCalculateAmount(Aura* /*aura*/, float& /*amount*/) {}
     virtual void OnPeriodicDamageCalculateAmount(Aura* /*aura*/, float& /*amount*/) {}
+    virtual void OnPeriodicDamageBeforeDeal(Aura* /*aura*/, uint32 /*damage*/, CleanDamage const* /*cleanDamage*/, bool& /*addThreat*/) {}
+    virtual void OnPeriodicDamageAfterDeal(Aura* /*aura*/, uint32 /*damage*/, CleanDamage const* /*cleanDamage*/) {}
     virtual void OnPeriodicHealingBonus(Aura* /*periodicAura*/, Aura* /*modifierAura*/, Unit* /*caster*/, Unit* /*target*/, uint32& /*amount*/) {}
     virtual void OnSpellHealingBonusTaken(Aura* /*aura*/, WorldObject* /*caster*/, SpellEntry const* /*spellInfo*/, SpellEffectIndex /*effIdx*/, int32 /*healAmount*/, DamageEffectType /*damageType*/, uint32 /*stack*/, Spell* /*spell*/, float& /*takenTotalMod*/) {}
     virtual void OnManaRegenCalculate(Aura* /*aura*/, float& /*baseRegen*/, float& /*mp5Regen*/) {}
