@@ -1,0 +1,185 @@
+name: soulcore-playerbots-build
+
+# PlayerBots 分支独立 CI：仅对 feature/playerbots 运行，不覆盖主线 weekly-build 产物。
+# 双平台(Linux/Windows) × 双配置(BUILD_PLAYERBOTS=ON/OFF) 矩阵，验证 bot 分支可编译。
+# 产物名加 -pb 后缀（soulcore-pb-<ON|OFF>-<linux|windows>），与主线 soulcore-tortoise-wow 区分。
+
+on:
+  push:
+    branches: [feature/playerbots]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: soulcore-build-pb
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        playerbots: [ON, OFF]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git \
+            libace-dev libssl-dev libbz2-dev zlib1g-dev \
+            libreadline-dev default-libmysqlclient-dev \
+            libboost-dev libboost-thread-dev libboost-filesystem-dev libboost-system-dev
+
+      - name: Ccache cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-pb-ubuntu22-${{ github.sha }}
+          restore-keys: |
+            ccache-pb-ubuntu22-
+
+      - name: Configure
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_SCRIPTS=ON \
+            -DUSE_EXTRACTORS=OFF \
+            -DALLOW_TURTLE_ADDONS=ON \
+            -DUSE_PCH=ON \
+            -DBUILD_PLAYERBOTS=${{ matrix.playerbots }}
+
+      - name: Build
+        run: cmake --build build -j2
+
+      - name: Package
+        run: |
+          VERSION=$(git rev-parse --short HEAD)
+          mkdir -p dist/bin dist/etc dist/sql
+          cp build/src/mangosd/mangosd build/src/realmd/realmd dist/bin/
+          find build -name "*.conf.dist" -exec cp {} dist/etc/ \;
+          find src -name "*.conf.dist.in" -exec sh -c 'cp "$1" "dist/etc/$(basename "$1" .in)"' _ {} \;
+          cp -r sql/* dist/sql/ 2>/dev/null || true
+          tar czf soulcore-tortoise-wow-pb-${{ matrix.playerbots }}-linux-$VERSION.tar.gz dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soulcore-pb-${{ matrix.playerbots }}-linux
+          path: soulcore-tortoise-wow-pb-*-linux-*.tar.gz
+          retention-days: 14
+
+  build-windows:
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        playerbots: [ON, OFF]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup vcpkg
+        shell: pwsh
+        run: |
+          if (-not (Test-Path C:\vcpkg)) {
+            git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
+            & C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
+          }
+          echo "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Cache vcpkg
+        uses: actions/cache@v4
+        with:
+          path: C:\vcpkg\installed
+          key: vcpkg-pb-windows-${{ github.sha }}
+          restore-keys: |
+            vcpkg-pb-windows-
+
+      - name: Install ACE + Boost (bot 模块需要 boost thread/filesystem/system)
+        shell: pwsh
+        run: |
+          C:\vcpkg\vcpkg install ace boost-thread boost-filesystem boost-system --triplet x64-windows
+          echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          echo "BOOST_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+
+      - name: Patch ACE Cleanup.h (MSVC C2694 workaround)
+        shell: pwsh
+        run: |
+          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Cleanup.h'
+          $c = Get-Content $p -Raw
+          if ($c -match 'noexcept \(false\)') {
+            Write-Output 'Already patched'
+          } else {
+            $c = $c -replace 'virtual ~ACE_Cleanup \(\) = default;', 'virtual ~ACE_Cleanup () noexcept (false) = default;'
+            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
+            Write-Output 'Patched Cleanup.h'
+          }
+
+      - name: Patch ACE Singleton.h (MSVC C2694 workaround)
+        shell: pwsh
+        run: |
+          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Singleton.h'
+          $c = Get-Content $p -Raw
+          if ($c -match '~ACE_Singleton \(\) noexcept') {
+            Write-Output 'Already patched'
+          } else {
+            $ins = "  /// Destructor.`n  ~ACE_Singleton () noexcept override = default;"
+            $c = $c -replace '(class ACE_Singleton : public ACE_Cleanup\s*\{\s*public:)', ('$1' + "`n" + $ins)
+            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
+            Write-Output 'Patched Singleton.h'
+          }
+
+      - name: Configure
+        shell: pwsh
+        run: |
+          cmake -B build -A x64 `
+            "-DACE_ROOT=C:\vcpkg\installed\x64-windows" `
+            "-DBOOST_ROOT=C:\vcpkg\installed\x64-windows" `
+            -DBUILD_PLAYERBOTS=${{ matrix.playerbots }} `
+            -DALLOW_TURTLE_ADDONS=ON `
+            -DUSE_STD_MALLOC=ON `
+            -DUSE_SCRIPTS=ON `
+            -DUSE_ANTICHEAT=ON `
+            -DUSE_DISCORD_BOT=OFF `
+            -DUSE_EXTRACTORS=ON `
+            -DUSE_LIBCURL=OFF `
+            -DUSE_TRACY=OFF `
+            -DUSE_PCH=ON `
+            "-DCMAKE_CXX_FLAGS=/EHsc /wd4996 /wd4355 /wd4244 /wd4267 /MP /Zc:noexceptTypes-"
+
+      - name: Build
+        shell: pwsh
+        run: cmake --build build --config Release --parallel
+
+      - name: Package
+        shell: pwsh
+        run: |
+          $VERSION = (git rev-parse --short HEAD).Trim()
+          New-Item -ItemType Directory -Force -Path dist\bin, dist\etc, dist\sql | Out-Null
+          Copy-Item bin\Release\mangosd.exe, bin\Release\realmd.exe dist\bin\ -ErrorAction SilentlyContinue
+          Copy-Item bin\Release\mapextractor.exe, bin\Release\vmapextractor.exe, bin\Release\vmap_assembler.exe, bin\Release\MoveMapGen.exe dist\bin\ -ErrorAction SilentlyContinue
+          Copy-Item tools\mmap\offmesh.txt, tools\mmap\mmapSettings.txt dist\bin\ -ErrorAction SilentlyContinue
+          Copy-Item C:\vcpkg\installed\x64-windows\bin\ACE.dll dist\bin\ -ErrorAction SilentlyContinue
+          Get-ChildItem build -Recurse -Filter *.conf.dist -ErrorAction SilentlyContinue | Copy-Item -Destination dist\etc\
+          Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + ($_.Name -replace '\.in$','')) }
+          Copy-Item -Recurse sql\* dist\sql\ -ErrorAction SilentlyContinue
+          tar czf soulcore-tortoise-wow-pb-${{ matrix.playerbots }}-windows-$VERSION.tar.gz dist
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soulcore-pb-${{ matrix.playerbots }}-windows
+          path: soulcore-tortoise-wow-pb-*-windows-*.tar.gz
+          retention-days: 14
