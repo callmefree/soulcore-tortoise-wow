@@ -6,17 +6,44 @@
 
 ---
 
-## 一、当前状态总览（2026-08-11 更新）
+## 一、当前状态总览（2026-08-12 更新）
 
 | 项 | 状态 |
 |---|---|
-| 服务端 | ⏸️ 当前未运行（mangosd/realmd 停；MariaDB 3306 运行中） |
+| 服务端 | ✅ **Ubuntu 运行中**（realmd 3724 + mangosd 8090，tmux 会话；MariaDB 3306 本机） |
 | 阶段 0（技术探针） | ✅ **全部完成，门禁通过** |
-| 阶段 1（A 级 9 项） | 🔄 **4 项保留 + 5 项砍除**（2026-08-11 用户决策：砍宝石/符文/打孔/合成/门控，槽位全让给阶段 2 词缀） |
-| lua_scripts/arpg/ | **4 个脚本**（city_crier/guide_npc/reforge/travel_vendor；gem/rune/socket/combine/gate 已删） |
+| 阶段 1（A 级） | ✅ **门禁关闭（2026-08-12）**：1-1/1-2/1-3 + 1-7 重铸全部实测通过；5 项砍除（2026-08-11 决策） |
+| 阶段 2（B 级） | ⏸️ **曾开工后全部撤销（2026-08-12），待用户重定方向**（详见"二、阶段 2 尝试与撤销记录"） |
+| lua_scripts/arpg/ | **4 个脚本**（city_crier/guide_npc/reforge/travel_vendor） |
 | local_changes SQL | **7 个文件（001-003 基建 + 010-012 + 017；013/014/016/018 移入 _deprecated/）** |
-| 自定义表（tw_char） | soulcore_hearthstone（炉石）；soulcore_arpg_sockets/gate 随系统砍除 |
-| 版本控制 | ✅ git（HEAD=c21634b 已提交） |
+| 自定义表（tw_char） | soulcore_hearthstone（炉石）；soulcore_arpg_sockets/gate（阶段 1 遗留，未用） |
+| 版本控制 | ✅ git（HEAD=**de056e2** = 阶段 1 完成点；阶段 2 提交已回退） |
+
+---
+
+## 二、阶段 2 尝试与撤销记录（2026-08-12，重要教训）
+
+**历程**（用户指令"推进到阶段 2"→ 2a 词缀 → 2b 三色球 → 用户撤销全部）：
+
+1. **2a 原生词缀（020）**：random_property=池9100（60 条现成复合 IRP）挂 1764 件紫装。实测通过（词缀显示/随机/持久）但用户不满：**英文/无后缀名、组合固定、绑死 ItemRandomProperties.dbc** → 撤销。
+2. **独立词缀库 v1/v2（021+affix.lua）**：自建词缀表（中文名/权重）+ 首次穿戴 roll + AddAura 生效。用户反馈"**词缀没在装备上显示**"（tooltip 无）→ 改附魔方案。
+3. **附魔方案 v3/v4**：SetEnchantment 打 PROP 槽（槽3前缀/槽4后缀），tooltip 显示效果文字。用户反馈"**属性还是原来的/暴击率无效**" → 根因：**原版属性附魔全是 passive+HIDDEN_CLIENTSIDE，服务端生效但客户端面板不显示**。
+4. **v5**：改用客户端可见 buff aura（23964 暴击+10/12966 攻速+10 等）。用户点破"**调用的还是系统原有的 buff**" → 效果层受 0-6 约束（不新建 spell）只能复用现有 buff。
+5. **用户决策：撤销阶段 2 全部改动**（2026-08-12 13:02）。
+
+**已执行撤销**：affix.lua/balls.lua 删除、soulcore_arpg_affix（tw_world）/soulcore_arpg_item_affix（tw_char）删表、020 回滚（random_property=9100→0）、git reset --hard de056e2、服务恢复 Loaded 7 脚本。
+
+**核心认知（再开阶段 2 前必读）**：
+- **0-6 约束是效果层天花板**：不新建 spell（避免客户端 DBC 补丁）→ 词缀/球效果只能复用现有 buff；"效果完全自定义"（自建 buff 名/图标/数值）**唯一路径 = 客户端 DBC 补丁**（改 Spell.dbc 打包 MPQ，原 C 级）。
+- **原版属性附魔全 passive**（SPELL_ATTR_PASSIVE=0x40 + HIDDEN_CLIENTSIDE=0x80），SetEnchantment 打 PROP 槽客户端面板不显示（服务端生效）→ 附魔路线死。
+- **客户端可见的现成 buff**（词缀/球可用）：23964 暴击+10 / 12966 攻速+10 / 12968 攻速+20 / 12970 攻速+30 / 8233 攻强+46 / 10484 攻强+249 / 22818 护甲+15 / 179 抗性+5 / 111 抗性+20 / 168 抗性+30。
+- **Spell.dbc 字段布局实锤**（Turtle 173 字段版）：basepoints@76-78(+1)、Effect@88-90、ApplyAuraName@91-93、StackAmount@26、PASSIVE=0x40@idx6、SpellIconID@117；名字列大多为空。SIE：idx1=effect type、idx10=spell、idx13/19=名字。
+- **玩家事件 id 与官方不同**：OnKillCreature=7 / OnKilledByCreature=8（官方 8/9）；OnEquip=29 / OnLootItem=32 / OnLogin=3。
+- **AI 运维**：工具/ssh_soulcore.py（paramiko 强制 IPv4，密码不入库）；character_inventory_copy 缺表修复（上游新代码需要，`CREATE TABLE ... LIKE character_inventory`）。
+
+**下次开工流程**：先跟用户对齐"效果层走哪条路"（接受现有 buff / 上 DBC 补丁）→ 再写计划。
+
+---
 
 **2026-08-11 大决策：砍除五系统，槽位让给词缀**：
 - **背景**：1.12 仅 7 附魔槽（0-6），gem(槽3/5)+rune(槽4) 与词缀（引擎 SetItemRandomProperties 硬编码写 3/4/5）结构性冲突；3.35 暗黑逍遥有 12 槽可挪词缀到 9/10/11，1.12 无此空间（Item.h:141-152 实锤）。
@@ -35,7 +62,7 @@
 
 ---
 
-## 二、阶段 1 逐项状态（9 项）
+## 三、阶段 1 逐项状态（9 项）
 
 | # | 系统 | 状态 | 关键实现 | 遗留 |
 |---|---|---|---|---|
@@ -53,7 +80,7 @@
 
 ---
 
-## 三、关键机制与 API（写脚本直接查）
+## 四、关键机制与 API（写脚本直接查）
 
 ### 槽位分工（防冲突，已定稿）
 | 槽 | 用途 | 说明 |
@@ -80,7 +107,7 @@
 
 ---
 
-## 四、踩坑记录（本阶段新增，勿重踩）
+## 五、踩坑记录（本阶段新增，勿重踩）
 
 1. **item 无使用法术 → 客户端右键不触发**：spellid_1=0 时客户端不认为可"使用"。必须给可右键物品配一个现有法术（如 8690 炉石）作载体，脚本 return false 阻止。
 2. **客户端缓存物品定义**：改物品模板后需**小退重登**（客户端才重新拉取，否则右键无动作）。
@@ -108,7 +135,7 @@
 
 ---
 
-## 五、数据资产清单
+## 六、数据资产清单
 
 ### SQL（sql/local_changes/，按序重放，README.md 有完整命令）
 | 文件 | 内容 |
@@ -143,7 +170,7 @@
 
 ---
 
-## 六、下一步工作
+## 七、下一步工作
 
 ### 立即（阶段 1 收尾 —— 4 项游戏内实测，测前 `.reload eluna`）
 1. **实测 1-4 符文**（rune.lua v2）：
@@ -168,7 +195,7 @@
 
 ---
 
-## 七、重启与恢复（换机/重开会话）
+## 八、重启与恢复（换机/重开会话）
 
 ```bash
 # 1. 启动 MariaDB（3306，root/soulcore2026）
