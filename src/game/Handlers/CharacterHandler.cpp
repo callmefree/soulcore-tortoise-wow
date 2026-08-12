@@ -1113,7 +1113,10 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 
     ALL_SESSION_SCRIPTS(this, OnLogin(pCurrChar));
 #ifdef USE_LUA
-    sTurtleLuaEngine.OnPlayerLogin(pCurrChar);
+    // PlayerBots(阶段C风险#1): bot 复用真实玩家 HandlePlayerLogin 路径，若不跳过
+    // 则每个 bot 上线触发 Eluna OnLogin -> 欢迎/炉石/NPC 脚本随 1000 bot 刷屏。
+    if (!pCurrChar->GetPlayerbotAI())
+        sTurtleLuaEngine.OnPlayerLogin(pCurrChar);
 #endif
 
     // Only on the FIRST login (the one that plays the intro cinematic) is the client's item cache

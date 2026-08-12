@@ -347,7 +347,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
         lang = LANG_ADDON;
 
 #ifdef USE_LUA
-    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChat(GetPlayer(), type, lang, msg))
+    if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerChat(GetPlayer(), type, lang, msg))
         return;
 #endif
 
@@ -423,7 +423,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 break;
         }
 
-        if (!sTurtleLuaEngine.OnAddonMessage(GetPlayer(), type, msg, addonReceiver, addonGuild, addonGroup, addonChannelId, hasAddonChannelTarget))
+        if (!GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnAddonMessage(GetPlayer(), type, msg, addonReceiver, addonGuild, addonGroup, addonChannelId, hasAddonChannelTarget))
             return;
     }
 #endif
@@ -477,7 +477,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 if (Channel *chn = cMgr->GetChannel(channel, playerPointer))
                 {
 #ifdef USE_LUA
-                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, chn))
+                    if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, chn))
                         return;
 #endif
 
@@ -682,7 +682,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             if (Player* toPlayer = player->GetSession()->GetPlayer())
             {
 #ifdef USE_LUA
-                if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerWhisper(GetPlayer(), type, lang, msg, toPlayer))
+                if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerWhisper(GetPlayer(), type, lang, msg, toPlayer))
                     return;
 #endif
 
@@ -719,7 +719,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -737,7 +737,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             if (Guild* guild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId()))
             {
 #ifdef USE_LUA
-                if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
+                if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
                     return;
 #endif
 
@@ -771,7 +771,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 if (Guild* guild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId()))
                 {
 #ifdef USE_LUA
-                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
+                    if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
                         return;
 #endif
 
@@ -795,7 +795,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -820,7 +820,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -841,7 +841,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 return;
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -863,7 +863,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 return;
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -891,7 +891,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 return;
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
