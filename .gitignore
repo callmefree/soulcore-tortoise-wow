@@ -4,3 +4,9 @@
 /.vscode/
 *.kate-swp
 *.exe
+/src/shared/revision.h
+
+# Local backup copies made before editing (never meant to be committed)
+*.bak
+*.bak.*
+*.bak-*

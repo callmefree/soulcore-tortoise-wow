@@ -91,6 +91,10 @@ Pet::~Pet()
     --PerfStats::g_totalPets;
 }
 
+// cmangos compat: vendored bot module calls IsSpellReady(SpellEntry const&). Out-of-line
+// because SpellEntry's complete type isn't visible at the declaration in Pet.h.
+bool Pet::IsSpellReady(SpellEntry const& spellInfo) const { return !HasSpellCooldown(spellInfo.Id); }
+
 void Pet::AddToWorld()
 {
     bool wasInWorld = IsInWorld();

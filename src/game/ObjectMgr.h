@@ -52,10 +52,11 @@ class Item;
 
 struct GameTele
 {
-    float  x = 0.0f;
-    float  y = 0.0f;
-    float  z = 0.0f;
-    float  o = 0.0f;
+    // bot uses position_x/y/z naming via anon unions.
+    union { float  x = 0.0f; float position_x; };
+    union { float  y = 0.0f; float position_y; };
+    union { float  z = 0.0f; float position_z; };
+    union { float  o = 0.0f; float orientation; };
     uint32 mapId = 0;
     std::string name;
     std::wstring wnameLow;
@@ -695,9 +696,12 @@ class ObjectMgr
         void LoadChatChannels();
         ChatChannelsEntry const* GetChannelEntryFor(uint32 channelId);
         ChatChannelsEntry const* GetChannelEntryFor(std::string const& name);
+        robin_hood::unordered_map<uint32, ChatChannelsEntry> const& GetChatChannelsMap() const { return m_chatChannelsMap; }
 
         static Player* GetPlayer(const char* name) { return ObjectAccessor::FindPlayerByName(name);}
         static Player* GetPlayer(ObjectGuid guid) { return ObjectAccessor::FindPlayer(guid); }
+        // cmangos signature: GetPlayer(guid, inWorld).
+        static Player* GetPlayer(ObjectGuid guid, bool /*inWorld*/) { return ObjectAccessor::FindPlayer(guid); }
 
         GameObjectInfo const* GetGameObjectInfo(uint32 id)
         {
@@ -1306,6 +1310,18 @@ class ObjectMgr
 
         int GetIndexForLocale(LocaleConstant loc);
         LocaleConstant GetLocaleForIndex(int i);
+        // cmangos has GetStorageLocaleIndexFor; semantics same as GetIndexForLocale.
+        int GetStorageLocaleIndexFor(LocaleConstant loc) { return GetIndexForLocale(loc); }
+        // GetGossipText: cmangos name; Penqle uses GetNpcText.
+        NpcText const* GetGossipText(uint32 entry) const { return GetNpcText(entry); }
+        // IsEncounter: cmangos checks if creature is an encounter (raid boss). Stub returns false.
+        bool IsEncounter(uint32 /*creatureEntry*/, uint32 /*mapId*/ = 0) const { return false; }
+        // Locale-strings getters: cmangos returns localized name strings via out-params.
+        // Stub no-op — bot falls back to default-locale fields.
+        // Templated to accept either std::string* or const char** out-param.
+        template<typename T> bool GetQuestLocaleStrings(uint32 /*entry*/, int32 /*loc_idx*/, T /*name*/) const { return false; }
+        template<typename T> bool GetCreatureLocaleStrings(uint32 /*entry*/, int32 /*loc_idx*/, T /*name*/) const { return false; }
+        template<typename T> bool GetItemLocaleStrings(uint32 /*entry*/, int32 /*loc_idx*/, T /*name*/) const { return false; }
 
         bool IsConditionSatisfied(uint32 conditionId, WorldObject const* target, Map const* map, WorldObject const* source, ConditionSource conditionSourceType) const;
 
@@ -1477,6 +1493,7 @@ class ObjectMgr
         uint32 GetPlayerWorldMaskByGUID(const uint64 guid);
         void SetPlayerWorldMask(const uint64 guid, uint32 newWorldMask);
         std::map<uint32, uint32> m_PlayerPhases;
+        std::mutex m_PlayerPhasesLock;
 
         // Saving Variables
         SavedVariable& _InsertVariable(uint32 index, uint32 value, bool saved);
@@ -1628,6 +1645,14 @@ class ObjectMgr
         IdGenerator<uint32> m_GroupIds;
         IdGenerator<uint32> m_PetitionIds;
         uint32              m_NextPetNumber;
+        // GeneratePetNumber reads this counter, asks the cache for the next free
+        // number at or above it, and writes it back - three steps with nothing
+        // between them. Two map threads entering together both saw the same
+        // value and both handed out the same pet number, and the second save hit
+        // "Duplicate entry for key PRIMARY" on character_pet. With a thousand
+        // bots summoning pets from several threads it turned up 34 times in one
+        // nine hour run.
+        std::mutex          m_PetNumberLock;
         std::set<uint32>    m_AuctionsIds;
         uint32              m_NextAuctionId;
 
