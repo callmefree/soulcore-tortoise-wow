@@ -107,10 +107,10 @@ jobs:
           restore-keys: |
             vcpkg-pb-windows-
 
-      - name: Install ACE + Boost (bot 模块需要 boost thread/filesystem/system)
+      - name: Install ACE + Boost (bot 模块需要 boost thread/filesystem/system/bimap)
         shell: pwsh
         run: |
-          C:\vcpkg\vcpkg install ace boost-thread boost-filesystem boost-system --triplet x64-windows
+          C:\vcpkg\vcpkg install ace boost-thread boost-filesystem boost-system boost-bimap --triplet x64-windows
           echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
           echo "BOOST_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 
