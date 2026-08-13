@@ -987,6 +987,12 @@ void RandomPlayerbotMgr::LoginFreeBots()
                     for (auto& [mGuid, master] : players)
                     {
                         ObjectGuid masterGuid(ObjectGuid(HIGHGUID_PLAYER, mGuid));
+                        // 防御性修复：players 容器中缓存的 master 裸指针可能已失效
+                        // （bot 登出/销毁时未同步从容器移除），直接解引用其嵌套成员会段错误
+                        // （崩溃栈 LoginFreeBots+0x1196 正是 master->...->GetPlayerbotMgr 路径）。
+                        // 先向对象管理器确认该 Player 仍有效，无效则跳过，避免崩溃。
+                        if (!sObjectMgr.GetPlayer(masterGuid, false))
+                            continue;
                         if (accountId == sObjectMgr.GetPlayerAccountIdByGUID(masterGuid))
                         {
                             PlayerbotMgr* mgr = master->GetPlayerbotMgr();
