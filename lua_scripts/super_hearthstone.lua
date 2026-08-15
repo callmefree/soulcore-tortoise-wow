@@ -16,6 +16,10 @@
 --   2) 主城传送(联盟/部落)
 --   3) 经典副本入口传送
 --   4) 自定义传送点: 保存当前地点 / 传送至保存点 / 删除 (CharDB 持久化, 按账号)
+--   5) 召唤机器人(PlayerBots): 仅限副本内, 每玩家最多 4 个
+--      - 调 .bot add <角色> 让同账号角色上线为 bot, 再 .bot summon 拉到身边
+--      - 数量统计: 在线玩家中同账号(GUID != 自己)的数量
+--      - 依赖: mangosd 编译带 -DBUILD_PLAYERBOTS=ON 且 AiPlayerbot.Enabled=1
 -- 部署: 拷贝到 server/bin/lua_scripts/ 后重启 mangosd 生效
 --       (第二阶段实现 .reload eluna 后可热加载, 无需重启)
 -- 注意: 坐标均为经典 1.12 常用值, 个别魔改地图位置可用 GM .go 实测后自行微调
@@ -23,6 +27,9 @@
 
 local HEARTHSTONE = 6948                     -- 炉石 entry
 local HS_DB_TABLE = "soulcore_hearthstone"   -- 自定义传送点表 (tw_char 库)
+
+-- ============ 召唤机器人配置 ============
+local MAX_BOTS = 4                          -- 每玩家最多召唤的机器人数量
 
 -- ============ 传送点数据 (菜单内顺序 = 数组顺序) ============
 -- 格式: { "显示名", map, x, y, z }
@@ -56,6 +63,7 @@ local function ShowMainMenu(player, item)
     player:GossipMenuAddItem(0, "主城传送", 0, 1)
     player:GossipMenuAddItem(0, "副本与区域传送", 0, 2)
     player:GossipMenuAddItem(0, "自定义传送点", 0, 3)
+    player:GossipMenuAddItem(0, "召唤机器人(副本内)", 0, 4)
     player:GossipMenuAddItem(0, "关闭菜单", 0, 9)
     player:GossipSendMenu(1, item)
 end
@@ -144,6 +152,129 @@ local function TeleportPlayer(player, p)
     player:GossipComplete()
 end
 
+-- ============ 召唤机器人 (PlayerBots) ============
+-- 规则: 仅限副本内(IsDungeon 含 5人本+团本), 每玩家最多 MAX_BOTS 个
+-- 实现: player:RunCommand(".bot add <角色名>") 让同账号角色上线为 bot,
+--       再 .bot summon <角色名> 拉到身边。
+-- 数量统计: 遍历在线玩家, 统计同账号(GUID != 自己)的在线角色数。
+
+local function GetSummonedBotCount(player)
+    local acct = player:GetAccountId()
+    local selfGuid = player:GetGUIDLow()
+    local count = 0
+    local players = GetPlayersInWorld()
+    for i = 1, #players do
+        local p = players[i]
+        if p and p:GetAccountId() == acct and p:GetGUIDLow() ~= selfGuid then
+            count = count + 1
+        end
+    end
+    return count
+end
+
+local function GetAccountAltNames(player)
+    -- 返回同账号下其他角色名列表 (排除当前角色)
+    local acct = player:GetAccountId()
+    local selfGuid = player:GetGUIDLow()
+    local names = {}
+    local q = CharDBQuery("SELECT name, guid FROM characters WHERE account = " .. acct)
+    if q then
+        local row = q:GetRow()
+        while row do
+            local guid = row[2]
+            if guid and guid ~= selfGuid then
+                table.insert(names, row[1])
+            end
+            if not q:NextRow() then break end
+            row = q:GetRow()
+        end
+    end
+    return names
+end
+
+local function IsOnlineByName(name)
+    local players = GetPlayersInWorld()
+    for i = 1, #players do
+        local p = players[i]
+        if p and p:GetName() == name then
+            return true
+        end
+    end
+    return false
+end
+
+local function ShowBotMenu(player, item)
+    player:GossipClearMenu()
+    local count = GetSummonedBotCount(player)
+    player:GossipMenuAddItem(0, string.format("当前已召唤: %d/%d", count, MAX_BOTS), 4, 0)
+    local alts = GetAccountAltNames(player)
+    if #alts == 0 then
+        player:GossipMenuAddItem(0, "该账号没有其他角色可用", 4, 0)
+    else
+        for i, name in ipairs(alts) do
+            local suffix = IsOnlineByName(name) and " (已上线)" or ""
+            player:GossipMenuAddItem(0, "召唤 " .. name .. suffix, 4, 100 + i)
+        end
+    end
+    player:GossipMenuAddItem(0, "返回主菜单", 4, 0)
+    player:GossipSendMenu(1, item)
+end
+
+-- action: 100+i -> 召唤第 i 个角色
+local function HandleBotSelect(player, item, action)
+    local map = player:GetMap()
+    if not map or not map:IsDungeon() then
+        player:SendBroadcastMessage("只能在副本内召唤机器人。")
+        ShowMainMenu(player, item)
+        return
+    end
+
+    if GetSummonedBotCount(player) >= MAX_BOTS then
+        player:SendBroadcastMessage("最多只能召唤 " .. MAX_BOTS .. " 个机器人。")
+        ShowMainMenu(player, item)
+        return
+    end
+
+    local alts = GetAccountAltNames(player)
+    local idx = action - 100
+    if not alts[idx] then
+        player:SendBroadcastMessage("角色不存在。")
+        ShowMainMenu(player, item)
+        return
+    end
+
+    local name = alts[idx]
+    player:RunCommand(".bot add " .. name)
+    player:RunCommand(".bot summon " .. name)
+    player:SendBroadcastMessage("正在召唤 " .. name .. " ...")
+    player:GossipComplete()
+end
+
+-- ============ 全局命令拦截: 机器人只能在副本内召唤 ============
+-- Chat.cpp:1755 在 ExecuteCommand 前调用 sTurtleLuaEngine.OnPlayerCommand(player, text),
+-- 返回 false 即阻止该命令。因此玩家直接敲 `.bot add` / `.rndbot add` 在野外也会被拦,
+-- 无法绕过炉石菜单的副本限制。(事件 42 = PLAYER_EVENT_ON_COMMAND)
+local BOT_BLOCK_SUBS = {
+    add = true, login = true, always = true,
+    summon = true, recall = true, come = true,
+}
+
+local function OnPlayerCommand(event, player, command, chatHandler)
+    if not player then return true end
+
+    -- 副本内放行 (lua 菜单召唤也走这里, 副本内正常通过)
+    local map = player:GetMap()
+    if map and map:IsDungeon() then return true end
+
+    local cmd, sub = command:match("^(%S+)%s+(%S+)")
+    if (cmd == "bot" or cmd == "rndbot") and sub and BOT_BLOCK_SUBS[sub] then
+        player:SendBroadcastMessage("只能在副本内召唤机器人。")
+        return false
+    end
+    return true
+end
+RegisterPlayerEvent(42, OnPlayerCommand)
+
 -- ============ 事件注册 ============
 
 -- 右键炉石 -> 弹菜单并阻止默认回城
@@ -169,6 +300,8 @@ local function OnHearthstoneGossipSelect(event, player, item, sender, action, co
             ShowDungeonMenu(player, item)
         elseif action == 3 then
             ShowCustomMenu(player, item)
+        elseif action == 4 then
+            ShowBotMenu(player, item)
         elseif action == 9 then
             player:GossipComplete()
         end
@@ -188,6 +321,12 @@ local function OnHearthstoneGossipSelect(event, player, item, sender, action, co
         if p then TeleportPlayer(player, p) end
     elseif sender == 3 then
         HandleCustom(player, item, action)
+    elseif sender == 4 then
+        if action == 0 then
+            ShowMainMenu(player, item)
+        elseif action >= 100 then
+            HandleBotSelect(player, item, action)
+        end
     end
 end
 RegisterItemGossipEvent(HEARTHSTONE, 2, OnHearthstoneGossipSelect)  -- 2 = GOSSIP_EVENT_ON_SELECT
