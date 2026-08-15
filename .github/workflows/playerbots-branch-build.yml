@@ -35,17 +35,19 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake git \
+            build-essential cmake git ccache \
             libace-dev libssl-dev libbz2-dev zlib1g-dev \
             libreadline-dev default-libmysqlclient-dev \
             libboost-dev libboost-thread-dev libboost-filesystem-dev libboost-system-dev
+          ccache --version | head -1
 
       - name: Ccache cache
         uses: actions/cache@v4
         with:
           path: ~/.cache/ccache
-          key: ccache-pb-ubuntu22-${{ github.sha }}
+          key: ccache-pb-ubuntu22-${{ matrix.playerbots }}-${{ github.sha }}
           restore-keys: |
+            ccache-pb-ubuntu22-${{ matrix.playerbots }}-
             ccache-pb-ubuntu22-
 
       - name: Configure
@@ -56,20 +58,29 @@ jobs:
             -DUSE_EXTRACTORS=OFF \
             -DALLOW_TURTLE_ADDONS=ON \
             -DUSE_PCH=ON \
-            -DBUILD_PLAYERBOTS=${{ matrix.playerbots }}
+            -DBUILD_PLAYERBOTS=${{ matrix.playerbots }} \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
-        run: cmake --build build -j2
+        run: |
+          cmake --build build -j2
+          echo "--- ccache stats ---"
+          ccache -s
 
       - name: Package
         run: |
           VERSION=$(git rev-parse --short HEAD)
           mkdir -p dist/bin dist/etc dist/sql
           cp build/src/mangosd/mangosd build/src/realmd/realmd dist/bin/
+          # strip 调试符号: Linux 静态链接产物符号表占体积 50%+,
+          # strip 后 mangosd 从 ~1.5GB 缩到 ~300-400MB, 运行无影响
+          strip -s dist/bin/mangosd dist/bin/realmd
           find build -name "*.conf.dist" -exec cp {} dist/etc/ \;
           find src -name "*.conf.dist.in" -exec sh -c 'cp "$1" "dist/etc/$(basename "$1" .in)"' _ {} \;
           cp -r sql/* dist/sql/ 2>/dev/null || true
           tar czf soulcore-tortoise-wow-pb-${{ matrix.playerbots }}-linux-$VERSION.tar.gz dist
+          ls -lh dist/bin/ soulcore-tortoise-wow-pb-${{ matrix.playerbots }}-linux-$VERSION.tar.gz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
