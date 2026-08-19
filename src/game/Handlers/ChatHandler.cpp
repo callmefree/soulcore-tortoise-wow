@@ -347,7 +347,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
         lang = LANG_ADDON;
 
 #ifdef USE_LUA
-    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChat(GetPlayer(), type, lang, msg))
+    if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerChat(GetPlayer(), type, lang, msg))
         return;
 #endif
 
@@ -423,7 +423,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 break;
         }
 
-        if (!sTurtleLuaEngine.OnAddonMessage(GetPlayer(), type, msg, addonReceiver, addonGuild, addonGroup, addonChannelId, hasAddonChannelTarget))
+        if (!GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnAddonMessage(GetPlayer(), type, msg, addonReceiver, addonGuild, addonGroup, addonChannelId, hasAddonChannelTarget))
             return;
     }
 #endif
@@ -455,6 +455,14 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
         }
     }
 
+    // Dispatch chat to the master's own bots so they can react to /party,
+    // /raid, /guild, /say, /yell, and whispers. cmangos hooks here (in
+    // HandleMessagechatOpcode, after validation and before broadcast).
+    // Implementation lives in src/modules/PlayerBots/playerbot/HostHooks.cpp.
+    // No-op when m_playerbotMgr is null.
+    if (_player && _player->GetPlayerbotMgr())
+        Player_DispatchBotChatCommand(_player, type, msg, lang, to);
+
     // Message handling
     switch (type)
     {
@@ -469,7 +477,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 if (Channel *chn = cMgr->GetChannel(channel, playerPointer))
                 {
 #ifdef USE_LUA
-                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, chn))
+                    if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerChannelChat(GetPlayer(), type, lang, msg, chn))
                         return;
 #endif
 
@@ -674,7 +682,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             if (Player* toPlayer = player->GetSession()->GetPlayer())
             {
 #ifdef USE_LUA
-                if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerWhisper(GetPlayer(), type, lang, msg, toPlayer))
+                if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerWhisper(GetPlayer(), type, lang, msg, toPlayer))
                     return;
 #endif
 
@@ -711,7 +719,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -729,7 +737,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             if (Guild* guild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId()))
             {
 #ifdef USE_LUA
-                if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
+                if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
                     return;
 #endif
 
@@ -763,7 +771,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 if (Guild* guild = sGuildMgr.GetGuildById(GetMasterPlayer()->GetGuildId()))
                 {
 #ifdef USE_LUA
-                    if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
+                    if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGuildChat(GetPlayer(), type, lang, msg, guild))
                         return;
 #endif
 
@@ -787,7 +795,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -812,7 +820,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
             }
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -833,7 +841,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 return;
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -855,7 +863,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 return;
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -883,7 +891,7 @@ void WorldSession::HandleMessagechatOpcode(WorldPacket & recv_data)
                 return;
 
 #ifdef USE_LUA
-            if (lang != LANG_ADDON && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
+            if (lang != LANG_ADDON && !GetPlayer()->GetPlayerbotAI() && !sTurtleLuaEngine.OnPlayerGroupChat(GetPlayer(), type, lang, msg, group))
                 return;
 #endif
 
@@ -1315,13 +1323,30 @@ bool WorldSession::HandleTurtleAddonMessages(uint32 lang, uint32 type, std::stri
 
             if (strstr(msg.c_str(), "Categories"))
             {
+                // Format per category is `id=parentId=name=icon;` - FOUR fields.
+                // The client (Turtle_ShopUI.lua's Shop_ProcessCategories, in
+                // patch-7.mpq) reads catEx[2] as the SUBCATEGORY PARENT id via
+                // tonumber() and then immediately does `if parentID > 0`. We
+                // used to send only three fields (`id=name=icon;`), so catEx[2]
+                // was the category NAME, tonumber() returned nil, and comparing
+                // nil > 0 threw a Lua error that aborted the whole parse loop.
+                // Symptom (confirmed live 2026-07-28): the shop window showed
+                // ONLY the "About" tab and no categories at all - About renders
+                // because the client injects it itself as a synthetic
+                // `0=0=About=about;` entry (four fields, parses fine) before
+                // the server's first real category kills the loop.
+                // This server has no subcategories (shop_categories has no
+                // parent column), so parentId is always 0 = top-level.
+                // The sibling "Entries:" reply below was already fixed for this
+                // client's 13-field format (see ObjectMgr::LoadShop) - only the
+                // category line was missed at the time.
                 std::string categories = "Categories:";
 
                 for (auto& itr : sObjectMgr.GetShopCategoriesList())
                     if (sWorld.getConfig(CONFIG_BOOL_SEA_NETWORK))
-                        categories += std::to_string(itr.first) + "=0=" + itr.second.Name_loc4 + "=" + itr.second.Icon + ";"; // TODO: parent_id
+                        categories += std::to_string(itr.first) + "=0=" + itr.second.Name_loc4 + "=" + itr.second.Icon + ";";
                     else
-                        categories += std::to_string(itr.first) + "=0=" + itr.second.Name + "=" + itr.second.Icon + ";"; // TODO: parent_id
+                        categories += std::to_string(itr.first) + "=0=" + itr.second.Name + "=" + itr.second.Icon + ";";
 
                 _player->SendAddonMessage(prefix, categories);
                 return true;

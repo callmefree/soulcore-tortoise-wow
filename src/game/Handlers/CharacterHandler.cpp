@@ -29,6 +29,7 @@
 #include "World.h"
 #include "ObjectMgr.h"
 #include "Player.h"
+#include "Handlers/LoginQueryHolder.h"
 #include "Guild.h"
 #include "GuildMgr.h"
 #include "UpdateMask.h"
@@ -61,29 +62,8 @@ enum CinematicsSkipMode
 };
 
 
-class LoginQueryHolder : public SqlQueryHolder
-{
-private:
-    uint32 m_accountId;
-    ObjectGuid m_guid;
-public:
-    LoginQueryHolder(uint32 accountId, ObjectGuid guid)
-        : SqlQueryHolder(guid.GetCounter()), m_accountId(accountId), m_guid(guid) { }
-    ~LoginQueryHolder()
-    {
-        // Queries should NOT be deleted by user
-        DeleteAllResults();
-    }
-    ObjectGuid GetGuid() const
-    {
-        return m_guid;
-    }
-    uint32 GetAccountId() const
-    {
-        return m_accountId;
-    }
-    bool Initialize();
-};
+// LoginQueryHolder class moved to Handlers/LoginQueryHolder.h
+// so the bot module can construct holders for synthetic bot logins. Initialize() definition stays here.
 
 bool LoginQueryHolder::Initialize()
 {
@@ -568,6 +548,55 @@ void WorldSession::LoginPlayer(ObjectGuid loginPlayerGuid)
     CharacterDatabase.DelayQueryHolderUnsafe(&chrHandler, &CharacterHandler::HandlePlayerLoginCallback, holder);
 }
 
+// Post-login event that fixes other players/bots rendering "naked" (base/underwear model) to a
+// freshly logged-in client.
+//
+// CAUSE: While the player watches the intro cinematic, the surrounding players/bots are sent to the
+// client and their character models are built BEFORE the client has received the item display data
+// (DisplayInfoID, delivered via SMSG_ITEM_QUERY_SINGLE_RESPONSE) for their equipped gear. The 1.12
+// client does NOT re-render an already-created character model when those item-query responses
+// arrive afterwards, so the equipment never appears. Gear of the SAME class as the viewer renders
+// fine only because the client already cached that item data from drawing the viewer's own
+// character. The display otherwise corrects only on a full visibility reset (hearthstone/relog),
+// which destroys and re-creates the objects after the item data is cached.
+//
+// FIX: once the cinematic has finished (by which point the item-query responses have been received
+// and cached), force the client to destroy and re-create the players/bots it has in view, so their
+// models are rebuilt with the now-available equipment data. See Player::RefreshVisiblePlayersForClient.
+class RefreshVisiblePlayersEvent : public BasicEvent
+{
+public:
+    explicit RefreshVisiblePlayersEvent(ObjectGuid playerGuid, uint32 attempt = 0)
+        : BasicEvent(), m_playerGuid(playerGuid), m_attempt(attempt) {}
+
+    bool Execute(uint64 /*e_time*/, uint32 /*p_time*/) override
+    {
+        Player* player = ObjectAccessor::FindPlayer(m_playerGuid);
+        if (!player || !player->IsInWorld())
+            return true;
+
+        // Wait until the login cinematic has finished. Refreshing during the cinematic recreates
+        // objects the client hasn't fully received yet, which makes them vanish.
+        if (player->watching_cinematic_entry != 0)
+        {
+            if (m_attempt + 1 < kMaxAttempts)
+                player->m_Events.AddEvent(new RefreshVisiblePlayersEvent(m_playerGuid, m_attempt + 1),
+                                          player->m_Events.CalculateTime(kRetryMs));
+            return true;
+        }
+
+        // Cinematic done: one refresh of the players/bots the client has in view.
+        player->RefreshVisiblePlayersForClient();
+        return true;
+    }
+
+private:
+    static constexpr uint32 kMaxAttempts = 60; // cinematic-wait cap (~120s)
+    static constexpr uint32 kRetryMs     = 2000;
+    ObjectGuid m_playerGuid;
+    uint32 m_attempt;
+};
+
 void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 {
     // The following fixes a crash. Use case:
@@ -597,6 +626,29 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
             m_playerLoading = false;
             return;
         }
+
+        // If this character is currently in-world as a bot (PlayerbotAI
+        // attached), cleanly detach
+        // the AI BEFORE transferring session ownership. Without this, the
+        // bot's PlayerbotAI keeps ticking on what's now the real-player's
+        // Player object via Player::UpdatePlayerbotHooks → fights with the
+        // login handshake, drives movement / casts / packets the client
+        // doesn't expect → loading screen never finishes (10+ min hang
+        // observed; client eventually gives up). Reproduces deterministically
+        // when:
+        //   1. Char A is being run as a bot
+        //   2. Master logs off
+        //   3. User immediately logs into Char A as a real player
+        // The take-over path below transfers the Player object cleanly; we
+        // just have to make sure the bot brain stops first.
+        if (pCurrChar->GetPlayerbotAI())
+        {
+            sLog.outInfo("[BOT] HandlePlayerLogin: char %s (guid %u) currently running as a bot — "
+                         "detaching PlayerbotAI before real-player session take-over",
+                         pCurrChar->GetName(), playerGuid.GetCounter());
+            pCurrChar->RemovePlayerbotAI();
+        }
+
         pCurrChar->GetSession()->SetPlayer(nullptr);
         pCurrChar->SetSession(this);
 
@@ -643,6 +695,13 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     SetPlayer(pCurrChar);
     if (m_antiCheat)
         m_antiCheat->NewPlayer();
+
+    // Attach a PlayerbotMgr to real-player sessions. Bots (synthetic sessions
+    // with m_playerbotAI set during AddPlayerBot) skip this. Real players get
+    // a mgr so .bot commands work (otherwise the user hits "you cannot control
+    // bots yet").
+    if (!pCurrChar->GetPlayerbotAI())
+        pCurrChar->CreatePlayerbotMgr();
 
 
     //WE DO NOT NEED TO SEND ALL POSSIBLE TRANSMOGS TO ANY PLAYER ON LOGIN
@@ -726,6 +785,30 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
         SendNotification("WARNING: %s", warning);
     }
 
+    // --- Beginners guild (custom): put new guildless real players into the
+    //     configured welcome guild on their first login. Bots are excluded
+    //     through GetPlayerbotAI, and only up to level 5. ---
+    if (sConfig.GetBoolDefault("BeginnersGuilds", false)
+        && pCurrChar->GetGuildId() == 0
+        && !pCurrChar->GetPlayerbotAI()
+        && pCurrChar->GetLevel() <= 5)
+    {
+        // Random bots sit on RNDBOT accounts. Their session carries no username
+        // - GetUsername() is empty - so look the account name up by id instead,
+        // which is reliable, and exclude the bots that way.
+        std::string beginnersAccName;
+        sAccountMgr.GetName(GetAccountId(), beginnersAccName);
+        if (beginnersAccName.rfind("RNDBOT", 0) != 0)
+        {
+            uint32 beginnersGuildId = (pCurrChar->GetTeam() == HORDE)
+                ? sConfig.GetIntDefault("BeginnersGuildHorde", 0)
+                : sConfig.GetIntDefault("BeginnersGuildAlliance", 0);
+            if (beginnersGuildId)
+                if (Guild* beginnersGuild = sGuildMgr.GetGuildById(beginnersGuildId))
+                    beginnersGuild->AddMember(pCurrChar->GetObjectGuid(), beginnersGuild->GetLowestRank());
+        }
+    }
+
     if (Guild* guild = sGuildMgr.GetGuildById(pCurrChar->GetGuildId()))
     {
         WorldPacket data(SMSG_GUILD_EVENT, (2 + guild->GetMOTD().size() + 1));
@@ -748,6 +831,7 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     GetMasterPlayer()->SendInitialActionButtons();
 
     // Show only player accounts cinematic at first log on
+    bool showedIntroCinematic = false;
     if (!sWorld.getConfig(CONFIG_BOOL_PTR))
     {
         AccountMgr AccountMgr;
@@ -758,7 +842,10 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
                 pCurrChar->SetCinematic(1);
 
                 if (ChrRacesEntry const* rEntry = sChrRacesStore.LookupEntry(pCurrChar->GetRace()))
+                {
                     pCurrChar->SendCinematicStart(rEntry->CinematicSequence);
+                    showedIntroCinematic = true;
+                }
             }
         }
     }
@@ -849,7 +936,16 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
     }
 
     auto maskVar = pCurrChar->GetPlayerVariable(PlayerVariables::PendingChallengeMask);
-    if (maskVar && *maskVar != "0")
+    // Bot sessions must never go through challenge setup — they predate TurtleWoW's hardcore
+    // system and have no concept of it. Skip and clear any stale mask so it doesn't re-fire.
+    const std::string& remoteAddr = pCurrChar->GetSession()->GetRemoteAddress();
+    const bool isBotSession = (remoteAddr == "disconnected/bot" || remoteAddr == "<BOT>");
+    if (isBotSession)
+    {
+        if (maskVar)
+            pCurrChar->SetPlayerVariable(PlayerVariables::PendingChallengeMask, "0");
+    }
+    else if (maskVar && *maskVar != "0")
     {
         uint32 challengeMask = std::stoul(*maskVar);
 
@@ -1017,8 +1113,19 @@ void WorldSession::HandlePlayerLogin(LoginQueryHolder *holder)
 
     ALL_SESSION_SCRIPTS(this, OnLogin(pCurrChar));
 #ifdef USE_LUA
-    sTurtleLuaEngine.OnPlayerLogin(pCurrChar);
+    // PlayerBots(阶段C风险#1): bot 复用真实玩家 HandlePlayerLogin 路径，若不跳过
+    // 则每个 bot 上线触发 Eluna OnLogin -> 欢迎/炉石/NPC 脚本随 1000 bot 刷屏。
+    if (!pCurrChar->GetPlayerbotAI())
+        sTurtleLuaEngine.OnPlayerLogin(pCurrChar);
 #endif
+
+    // Only on the FIRST login (the one that plays the intro cinematic) is the client's item cache
+    // cold enough to render nearby players/bots naked; subsequent logins already have the gear data
+    // cached and render fine. So schedule the equipment-refresh only when the cinematic was shown,
+    // to avoid an unnecessary destroy/recreate "blink" on every subsequent login.
+    if (showedIntroCinematic)
+        pCurrChar->m_Events.AddEvent(new RefreshVisiblePlayersEvent(pCurrChar->GetObjectGuid()),
+                                     pCurrChar->m_Events.CalculateTime(3000));
 }
 
 void WorldSession::HandleSetFactionAtWarOpcode(WorldPacket & recv_data)

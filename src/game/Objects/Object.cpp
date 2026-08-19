@@ -319,6 +319,10 @@ void Object::SendCreateUpdateToPlayer(Player* player)
     upd.Send(player->GetSession());
 }
 
+// cmangos compat: vendored bot module calls IsFriend/IsEnemy on WorldObject*.
+bool WorldObject::IsFriend(WorldObject const* target) const { return target && IsFriendlyTo(target); }
+bool WorldObject::IsEnemy(WorldObject const* target) const { return target && IsHostileTo(target); }
+
 void WorldObject::DirectSendPublicValueUpdate(uint32 index, uint32 count)
 {
     // Do we need an update ?
@@ -3838,7 +3842,7 @@ float WorldObject::MeleeSpellMissChance(Unit* pVictim, WeaponAttackType attType,
                     hitChance += owner->m_modSpellHitChance * aura->GetModifier()->m_amount / 100.0f;
             }
         }
-    } 
+    }
 
     // There is some code in 1.12 that explicitly adds a modifier that causes the first 1% of +hit gained from
     // talents or gear to be ignored against monsters with more than 10 Defense Skill above the attacking players Weapon Skill.

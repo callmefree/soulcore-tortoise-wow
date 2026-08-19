@@ -48,6 +48,10 @@ option(ENABLE_PROFILING "(Windows only) Enable Optick integration, which allows 
 option(ENABLE_LSAN "Enables Leak Sanitizer" OFF)
 # Allow enabling official Turtle addon support
 option(ALLOW_TURTLE_ADDONS "Allow Turtle addons" ON)
+# Build cmangos/playerbots — bot AI vendored under src/modules/PlayerBots/.
+# When ON, mangosd links the bot subsystem; runtime activation is gated by
+# AiPlayerbot.Enabled in aiplayerbot.conf.
+option(BUILD_PLAYERBOTS "Build the cmangos/playerbots subsystem" OFF)
 
 
 if(UNIX)
@@ -268,9 +272,29 @@ if(WIN32)
   set(MYSQL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/mysql)
   set(MYSQL_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libmySQL.lib)
   set(MYSQL_DEBUG_LIBRARY ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libmySQL.lib)
-  set(OPENSSL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/openssl)
-  set(OPENSSL_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto.lib)
-  set(OPENSSL_DEBUG_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto.lib)
+  # The bundled OpenSSL is 1.1.1, headers and import libraries together, and it
+  # works as long as nothing else puts OpenSSL headers on the search path. That
+  # stops being true the moment ACE or Boost come from vcpkg: its shared include
+  # root carries OpenSSL 3.x, which shadows the bundled headers because
+  # ACE_INCLUDE_DIR is listed before dep/include-windows in src/game and
+  # src/shared. Compiling against 3.x while still linking 1.1.1 leaves exactly
+  # OSSL_PROVIDER_load and SSL_get1_peer_certificate unresolved - both of them
+  # guarded by version in the code, so they are only referenced when the headers
+  # say 3.x.
+  #
+  # Hence: let the builder point at their own OpenSSL. The code itself is happy
+  # with either version. Passing nothing keeps the bundled copy, as before.
+  if(NOT OPENSSL_INCLUDE_DIR)
+    set(OPENSSL_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/windows/include/openssl)
+  endif()
+  if(NOT OPENSSL_LIBRARIES)
+    set(OPENSSL_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto.lib)
+    # Remembered so the install step knows whether to ship the matching runtime.
+    set(USING_BUNDLED_OPENSSL TRUE)
+  endif()
+  if(NOT OPENSSL_DEBUG_LIBRARIES)
+    set(OPENSSL_DEBUG_LIBRARIES ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl.lib ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto.lib)
+  endif()
   set(ZLIB_INCLUDE_DIRS ${CMAKE_SOURCE_DIR}/dep/windows/include/zlib)
 
   set(OPTICK_INCLUDE_DIR ${CMAKE_SOURCE_DIR}/dep/include/optick)
@@ -475,6 +499,19 @@ if(MSVC)
   #endif()
   
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /bigobj")
+
+  # Release builds carry debug information too. The server installs a crash
+  # handler that writes a minidump, and without a .pdb every frame in it is a
+  # bare address - the one file meant to explain a crash explains nothing.
+  # /OPT:REF and /OPT:ICF are here because /DEBUG turns them off by default;
+  # with them the generated binary is the same as before, there is simply a
+  # .pdb beside it.
+  set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} /Zi")
+  set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} /Zi")
+  foreach(_linker EXE SHARED MODULE)
+    set(CMAKE_${_linker}_LINKER_FLAGS_RELEASE
+        "${CMAKE_${_linker}_LINKER_FLAGS_RELEASE} /DEBUG /OPT:REF /OPT:ICF")
+  endforeach()
 endif()
 
 set(CMAKE_SKIP_BUILD_RPATH FALSE)
@@ -497,6 +534,36 @@ if(WIN32)
     DESTINATION ${LIBS_DIR}
     CONFIGURATIONS Debug
   )
+
+  # libeay32.dll above is the OpenSSL 1.0 runtime, but what actually gets linked
+  # is libssl.lib and libcrypto.lib - the 1.1 import libraries, whose runtime is
+  # named libssl-1_1[-x64].dll and libcrypto-1_1[-x64].dll. Both sit in the same
+  # directory; the wrong pair was simply picked, so a freshly installed server
+  # could not find its OpenSSL at all. Shipped only when the bundled copy is in
+  # use - anyone pointing OPENSSL_LIBRARIES at their own build brings their own.
+  if(USING_BUNDLED_OPENSSL)
+    if(DEP_ARCH STREQUAL "x64")
+      set(BUNDLED_SSL_SUFFIX "-x64")
+    else()
+      set(BUNDLED_SSL_SUFFIX "")
+    endif()
+    install(
+      FILES
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_release/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
+      DESTINATION ${LIBS_DIR}
+      CONFIGURATIONS Release
+      OPTIONAL
+    )
+    install(
+      FILES
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libssl-1_1${BUNDLED_SSL_SUFFIX}.dll
+        ${CMAKE_SOURCE_DIR}/dep/windows/lib/${DEP_ARCH}_debug/libcrypto-1_1${BUNDLED_SSL_SUFFIX}.dll
+      DESTINATION ${LIBS_DIR}
+      CONFIGURATIONS Debug
+      OPTIONAL
+    )
+  endif()
   if(PLATFORM MATCHES X86)
     # Copy dll's Windows needs
     install(
@@ -560,6 +627,75 @@ message(STATUS "Build flags (DEBUG)   : ${CMAKE_CXX_FLAGS_DEBUG}")
 add_subdirectory(src)
 add_subdirectory(dep)
 
+# cmangos/playerbots vendored module
+if (BUILD_PLAYERBOTS)
+    message(STATUS "BUILD_PLAYERBOTS=ON - adding cmangos/playerbots vendored module at src/modules/PlayerBots/")
+    set(PCH ${USE_PCH})
+    add_subdirectory(src/modules/PlayerBots)
+    # Vendor-tree feature gates the playerbots source expects:
+    #   CMANGOS         - selects the cmangos codepath in vendored headers
+    #                     (vs. TrinityCore / MaNGOS-Zero alternates).
+    #   MANGOSBOT_ZERO  - Classic (1.12). Switches level caps, talent trees,
+    #                     spell ranges. Use MANGOSBOT_ONE for TBC,
+    #                     MANGOSBOT_TWO for WotLK if re-vendoring later.
+    #   ENABLE_PLAYERBOTS - turns the subsystem on inside the vendor tree's
+    #                       own ifdef walls.
+    target_compile_definitions(playerbots PRIVATE CMANGOS MANGOSBOT_ZERO ENABLE_PLAYERBOTS)
+    target_include_directories(playerbots PUBLIC
+        ${CMAKE_SOURCE_DIR}/src/modules/PlayerBots/cmangos-compat-stubs
+        ${CMAKE_SOURCE_DIR}/src/game
+        ${CMAKE_SOURCE_DIR}/src/game/AI
+        ${CMAKE_SOURCE_DIR}/src/game/AuctionHouse
+        ${CMAKE_SOURCE_DIR}/src/game/Battlegrounds
+        ${CMAKE_SOURCE_DIR}/src/game/Chat
+        ${CMAKE_SOURCE_DIR}/src/game/Commands
+        ${CMAKE_SOURCE_DIR}/src/game/Database
+        ${CMAKE_SOURCE_DIR}/src/game/Group
+        ${CMAKE_SOURCE_DIR}/src/game/Guild
+        ${CMAKE_SOURCE_DIR}/src/game/Handlers
+        ${CMAKE_SOURCE_DIR}/src/game/LFG
+        ${CMAKE_SOURCE_DIR}/src/game/Mail
+        ${CMAKE_SOURCE_DIR}/src/game/Maps
+        ${CMAKE_SOURCE_DIR}/src/game/Maps/Pool
+        ${CMAKE_SOURCE_DIR}/src/game/Movement
+        ${CMAKE_SOURCE_DIR}/src/game/Movement/spline
+        ${CMAKE_SOURCE_DIR}/src/game/Objects
+        ${CMAKE_SOURCE_DIR}/src/game/OutdoorPvP
+        ${CMAKE_SOURCE_DIR}/src/game/PacketBroadcast
+        ${CMAKE_SOURCE_DIR}/src/game/Protocol
+        ${CMAKE_SOURCE_DIR}/src/game/Spells
+        ${CMAKE_SOURCE_DIR}/src/game/Threat
+        ${CMAKE_SOURCE_DIR}/src/game/Transports
+        ${CMAKE_SOURCE_DIR}/src/game/vmap
+        ${CMAKE_SOURCE_DIR}/src/shared
+        ${CMAKE_SOURCE_DIR}/src/shared/Config
+        ${CMAKE_SOURCE_DIR}/src/shared/Database
+        ${CMAKE_SOURCE_DIR}/src/shared/Log
+        ${CMAKE_SOURCE_DIR}/src/shared/Util
+        ${CMAKE_SOURCE_DIR}/src/framework
+        ${CMAKE_SOURCE_DIR}/src/framework/Network
+        # ACE_ROOT is only the search hint a builder may pass in; the path that
+        # find_package(ACE) actually resolved is ACE_INCLUDE_DIR, which is what
+        # src/game and src/shared use. Without it this target gets no ACE include
+        # path whenever ACE was found any other way - via the environment, a
+        # system install, or CMake's own search. On Linux that goes unnoticed
+        # because ACE sits in /usr/include; on Windows the build fails outright.
+        ${ACE_ROOT}
+        ${ACE_INCLUDE_DIR}
+        # Same story as ACE above: BOOST_ROOT is the hint, Boost_INCLUDE_DIRS is
+        # what find_package actually resolved.
+        ${BOOST_ROOT}
+        ${Boost_INCLUDE_DIRS}
+        ${CMAKE_SOURCE_DIR}/dep/include/g3dlite
+        ${MYSQL_INCLUDE_DIR}
+    )
+    if (WIN32)
+        target_include_directories(playerbots PUBLIC
+            ${CMAKE_SOURCE_DIR}/dep/windows/include
+            ${CMAKE_SOURCE_DIR}/dep/windows/include/mysql
+        )
+    endif()
+endif()
 
 if (USE_EXTRACTORS OR USE_REALMMERGE)
     add_subdirectory(tools)

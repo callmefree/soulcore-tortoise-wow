@@ -6823,9 +6823,11 @@ int PlayerRunCommand(lua_State* state)
 
     if (player && player->GetSession() && !command.empty())
     {
-        if (command[0] == '.' || command[0] == '!')
-            command.erase(command.begin());
-
+        // 注意: 不要在这里剥掉前导 '.'/'!'。ParseCommands (Chat.cpp:1733-1736)
+        // 对玩家 session 要求命令必须以 '.' 或 '!' 开头, 否则 return false 静默丢弃;
+        // ParseCommands 内部 (Chat.cpp:1750-1752) 自己会跳过前导符号。
+        // 旧代码先剥点再传入, 导致 ".bot add X" 变成 "bot add X" 被 ParseCommands
+        // 误判为非命令, RunCommand 静默失败 (召唤机器人无反应)。
         ChatHandler handler(player->GetSession());
         handler.ParseCommands(command.c_str());
     }

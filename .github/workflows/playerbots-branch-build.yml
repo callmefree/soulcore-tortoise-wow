@@ -1,0 +1,92 @@
+name: soulcore-playerbots-build
+
+# PlayerBots 分支独立 CI：仅对 feature/playerbots 运行，不覆盖主线 weekly-build 产物。
+# 只编译 Linux + BUILD_PLAYERBOTS=ON（部署目标产物），不再跑 OFF / Windows 矩阵，
+# 编译时间与 runner 占用减半。
+# 产物名加 -pb 后缀（soulcore-pb-linux），与主线 soulcore-tortoise-wow 区分。
+
+on:
+  push:
+    branches: [feature/playerbots]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+  actions: read
+
+concurrency:
+  group: soulcore-build-pb
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    # 显式超时：免费 runner 默认 6h 但冷缓存全量编译需 3-5h,
+    # 设 240min 让成功完成的 job 能落地 ccache 缓存，避免每次都冷编
+    timeout-minutes: 240
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential cmake git ccache \
+            libace-dev libssl-dev libbz2-dev zlib1g-dev \
+            libreadline-dev default-libmysqlclient-dev \
+            libboost-dev libboost-thread-dev libboost-filesystem-dev libboost-system-dev
+          ccache --version | head -1
+
+      - name: Ccache cache
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/ccache
+          key: ccache-pb-ubuntu22-${{ github.sha }}
+          restore-keys: |
+            ccache-pb-ubuntu22-
+
+      - name: Configure
+        env:
+          # 提高缓存容量上限（GitHub cache 上限 10GB）
+          CCACHE_MAXSIZE: 8G
+        run: |
+          cmake -S . -B build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DUSE_SCRIPTS=ON \
+            -DUSE_EXTRACTORS=OFF \
+            -DALLOW_TURTLE_ADDONS=ON \
+            -DUSE_PCH=ON \
+            -DBUILD_PLAYERBOTS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build
+        run: |
+          cmake --build build -j4
+          echo "--- ccache stats ---"
+          ccache -s
+
+      - name: Package
+        run: |
+          VERSION=$(git rev-parse --short HEAD)
+          mkdir -p dist/bin dist/etc dist/sql
+          cp build/src/mangosd/mangosd build/src/realmd/realmd dist/bin/
+          # strip 调试符号: Linux 静态链接产物符号表占体积 50%+,
+          # strip 后 mangosd 从 ~1.5GB 缩到 ~300-400MB, 运行无影响
+          strip -s dist/bin/mangosd dist/bin/realmd
+          find build -name "*.conf.dist" -exec cp {} dist/etc/ \;
+          find src -name "*.conf.dist.in" -exec sh -c 'cp "$1" "dist/etc/$(basename "$1" .in)"' _ {} \;
+          cp -r sql/* dist/sql/ 2>/dev/null || true
+          tar czf soulcore-tortoise-wow-pb-linux-$VERSION.tar.gz dist
+          ls -lh dist/bin/ soulcore-tortoise-wow-pb-linux-$VERSION.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: soulcore-pb-linux
+          path: soulcore-tortoise-wow-pb-linux-*.tar.gz
+          retention-days: 14
