@@ -10189,6 +10189,11 @@ void Player::SendPetSkillWipeConfirm() const
 /***                    STORAGE SYSTEM                 ***/
 /*********************************************************/
 
+bool Player::CanTitanGrip() const
+{
+    return HasSpell(TITAN_GRIP_SPELL_ID);
+}
+
 uint8 Player::FindEquipSlot(ItemPrototype const* proto, uint32 slot, bool swap) const
 {
     uint8 pClass = GetClass();
@@ -10262,6 +10267,9 @@ uint8 Player::FindEquipSlot(ItemPrototype const* proto, uint32 slot, bool swap) 
             break;
         case INVTYPE_2HWEAPON:
             slots[0] = EQUIPMENT_SLOT_MAINHAND;
+            // Titan's Grip: suggest offhand slot for 2h weapon
+            if (CanTitanGrip())
+                slots[1] = EQUIPMENT_SLOT_OFFHAND;
             break;
         case INVTYPE_TABARD:
             slots[0] = EQUIPMENT_SLOT_TABARD;
@@ -11731,25 +11739,35 @@ InventoryResult Player::CanEquipItem(uint8 slot, uint16 &dest, ItemPrototype con
                     return EQUIP_ERR_CANT_DUAL_WIELD;
             }
             else if (type == INVTYPE_2HWEAPON)
-                return EQUIP_ERR_CANT_DUAL_WIELD;
+            {
+                // Titan's Grip: allow 2h weapon in offhand
+                if (!CanTitanGrip())
+                    return EQUIP_ERR_CANT_DUAL_WIELD;
+            }
 
-            if (IsTwoHandUsed())
+            // Titan's Grip: allow offhand item while mainhand 2h weapon equipped
+            if (IsTwoHandUsed() && !CanTitanGrip())
                 return EQUIP_ERR_CANT_EQUIP_WITH_TWOHANDED;
         }
 
         // equip two-hand weapon case (with possible unequip 2 items)
         if (type == INVTYPE_2HWEAPON)
         {
-            if (eslot != EQUIPMENT_SLOT_MAINHAND)
+            // Titan's Grip: allow 2h weapon in offhand
+            if (eslot != EQUIPMENT_SLOT_MAINHAND && !CanTitanGrip())
                 return EQUIP_ERR_ITEM_CANT_BE_EQUIPPED;
 
             // offhand item must can be stored in inventory for offhand item and it also must be unequipped
-            Item *offItem = GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
-            ItemPosCountVec off_dest;
-            if (offItem && (!not_loading ||
-                            CanUnequipItem(uint16(INVENTORY_SLOT_BAG_0) << 8 | EQUIPMENT_SLOT_OFFHAND, false) !=  EQUIP_ERR_OK ||
-                            CanStoreItem(NULL_BAG, NULL_SLOT, off_dest, offItem, false) !=  EQUIP_ERR_OK))
-                return swap ? EQUIP_ERR_ITEMS_CANT_BE_SWAPPED : EQUIP_ERR_INVENTORY_FULL;
+            // (Titan's Grip: keep offhand 2h weapon when equipping 2h to mainhand)
+            if (eslot == EQUIPMENT_SLOT_MAINHAND && !CanTitanGrip())
+            {
+                Item *offItem = GetItemByPos(INVENTORY_SLOT_BAG_0, EQUIPMENT_SLOT_OFFHAND);
+                ItemPosCountVec off_dest;
+                if (offItem && (!not_loading ||
+                                CanUnequipItem(uint16(INVENTORY_SLOT_BAG_0) << 8 | EQUIPMENT_SLOT_OFFHAND, false) !=  EQUIP_ERR_OK ||
+                                CanStoreItem(NULL_BAG, NULL_SLOT, off_dest, offItem, false) !=  EQUIP_ERR_OK))
+                    return swap ? EQUIP_ERR_ITEMS_CANT_BE_SWAPPED : EQUIP_ERR_INVENTORY_FULL;
+            }
         }
         dest = ((INVENTORY_SLOT_BAG_0 << 8) | eslot);
         return EQUIP_ERR_OK;
@@ -21721,6 +21739,10 @@ void Player::AutoUnequipOffhandIfNeed()
 {
     // need to unequip offhand for 2h-weapon
     if (!IsTwoHandUsed())
+        return;
+
+    // Titan's Grip: keep offhand 2h weapon equipped
+    if (CanTitanGrip())
         return;
 
     AutoUnequipItemFromSlot(EQUIPMENT_SLOT_OFFHAND);

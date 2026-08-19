@@ -7924,6 +7924,13 @@ int PlayerHasSpell(lua_State* state)
     return 1;
 }
 
+int PlayerCanTitanGrip(lua_State* state)
+{
+    Player* player = CheckPlayer(state, 1);
+    lua_pushboolean(state, player && player->CanTitanGrip());
+    return 1;
+}
+
 int PlayerLearnSpell(lua_State* state)
 {
     Player* player = CheckPlayer(state, 1);
@@ -18199,7 +18206,7 @@ void TurtleLuaEngine::RegisterPlayerMetatable()
     SetMethod(_state, "AddBonusTalent", &PlayerAddBonusTalent);
     SetMethod(_state, "BindToInstance", &PlayerBindToInstance);
     SetMethod(_state, "CanFlyInZone", &PlayerCanFlyInZone);
-    SetMethod(_state, "CanTitanGrip", &PlayerCompatReturnFalse);
+    SetMethod(_state, "CanTitanGrip", &PlayerCanTitanGrip);
     SetMethod(_state, "CanUninviteFromGroup", &PlayerCanUninviteFromGroup);
     SetMethod(_state, "EquipItem", &PlayerEquipItem);
     SetMethod(_state, "GetAchievementCriteriaProgress", &PlayerCompatReturnNil);
