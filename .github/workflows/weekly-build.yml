@@ -64,6 +64,8 @@ jobs:
           # 源码 .in 模板无占位符,直接改名兜底(mangosd/mods/rate/realmd)
           find src -name "*.conf.dist.in" -exec sh -c 'cp "$1" "dist/etc/$(basename "$1" .in)"' _ {} \;
           cp -r sql/* dist/sql/ 2>/dev/null || true
+          # Eluna 脚本随产物发布
+          cp -r lua_scripts dist/bin/ 2>/dev/null || true
           tar czf soulcore-tortoise-wow-$VERSION.tar.gz dist
 
       - name: Upload artifact
@@ -167,6 +169,21 @@ jobs:
           Get-ChildItem build -Recurse -Filter *.conf.dist -ErrorAction SilentlyContinue | Copy-Item -Destination dist\etc\
           Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + ($_.Name -replace '\.in$','')) }
           Copy-Item -Recurse sql\* dist\sql\ -ErrorAction SilentlyContinue
+          # Eluna 脚本随产物发布
+          Copy-Item -Recurse lua_scripts dist\bin\lua_scripts\ -ErrorAction SilentlyContinue
+          # 运行时 DLL 补全脚本: libmysql.dll / libssl / libcrypto 由部署机本地提供(CI 无法生成)
+          @'
+          # copy_runtime_dlls.ps1 - 在部署机执行: 把本机运行时 DLL 补入 dist\bin
+          # 用法: powershell -ExecutionPolicy Bypass -File copy_runtime_dlls.ps1 -Src <本机server\bin路径>
+          param([Parameter(Mandatory=$true)][string]$Src)
+          $Dlls = @('libmysql.dll','libssl-1_1-x64.dll','libcrypto-1_1-x64.dll')
+          if (-not (Test-Path 'dist\bin')) { New-Item -ItemType Directory -Force -Path 'dist\bin' | Out-Null }
+          foreach ($d in $Dlls) {
+              $p = Join-Path $Src $d
+              if (Test-Path $p) { Copy-Item $p 'dist\bin\' -Force; Write-Host "OK  $d" }
+              else { Write-Warning "NOT FOUND: $d (从旧部署 server\bin 拷贝)" }
+          }
+          '@ | Set-Content dist\copy_runtime_dlls.ps1 -Encoding UTF8
           tar czf soulcore-tortoise-wow-$VERSION-windows.tar.gz dist
 
       - name: Upload artifact
@@ -175,3 +192,151 @@ jobs:
           name: soulcore-tortoise-wow-windows
           path: soulcore-tortoise-wow-*-windows.tar.gz
           retention-days: 14
+
+  # ── Lua 语法门禁 ──────────────────────────────────────────────
+  # 独立轻量 job: 任何 push/PR 时快速检查 lua_scripts 语法, 防止 Lua 脚本语法错误上线
+  lua-lint:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install Lua 5.2
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y lua5.2
+
+      - name: Lua syntax check (luac -p)
+        run: |
+          set -e
+          FAIL=0
+          COUNT=0
+          while IFS= read -r f; do
+            COUNT=$((COUNT+1))
+            echo "Checking: $f"
+            if ! luac5.2 -p "$f"; then
+              echo "::error::SYNTAX ERROR in $f"
+              FAIL=1
+            fi
+          done < <(find lua_scripts -name '*.lua' -type f | sort)
+          echo "Checked $COUNT Lua files"
+          if [ $FAIL -ne 0 ]; then
+            echo "::error::Lua syntax check FAILED"
+            exit 1
+          fi
+          echo "All Lua scripts passed syntax check"
+
+  # ── 冒烟测试 ──────────────────────────────────────────────────
+  # 依赖 build 产物: 初始化四库 + 启动 realmd 验证认证端口 + 启动 mangosd 验证 Lua 引擎/脚本加载
+  # 说明: CI 无地图文件(受版权保护), mangosd 验证到 Lua 加载阶段即可, 不要求 World server up
+  smoke-test:
+    needs: build
+    runs-on: ubuntu-22.04
+    services:
+      mariadb:
+        image: mariadb:11.4
+        env:
+          MARIADB_ROOT_PASSWORD: root
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="healthcheck.sh --connect --innodb_initialized"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Download artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: soulcore-tortoise-wow
+
+      - name: Extract artifact
+        run: |
+          tar xzf soulcore-tortoise-wow-*.tar.gz
+          ls -la dist/bin/
+
+      - name: Init databases
+        run: |
+          # 等待数据库就绪
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h127.0.0.1 -uroot -proot --silent; then
+              echo "Database ready"
+              break
+            fi
+            sleep 2
+          done
+          # 建四库 (create_databases.sql 自带 CREATE DATABASE + USE)
+          mysql -h127.0.0.1 -uroot -proot < dist/sql/create_databases.sql
+          # 导入 base 表结构到 tw_world
+          for f in dist/sql/base/tw_world_*.sql; do
+            echo "Importing $(basename $f)"
+            mysql -h127.0.0.1 -uroot -proot tw_world < "$f"
+          done
+          # 导入 database_updates
+          for f in dist/sql/database_updates/*_world.sql; do
+            echo "Importing $(basename $f)"
+            mysql -h127.0.0.1 -uroot -proot tw_world < "$f"
+          done
+          echo "Database init done"
+
+      - name: Configure conf
+        run: |
+          # 生成 mangosd.conf
+          cp dist/etc/mangosd.conf.dist dist/etc/mangosd.conf
+          sed -i 's|LoginDatabase.Info = .*|LoginDatabase.Info = "127.0.0.1;3306;root;root;tw_logon"|' dist/etc/mangosd.conf
+          sed -i 's|WorldDatabase.Info = .*|WorldDatabase.Info = "127.0.0.1;3306;root;root;tw_world"|' dist/etc/mangosd.conf
+          sed -i 's|CharacterDatabase.Info = .*|CharacterDatabase.Info = "127.0.0.1;3306;root;root;tw_char"|' dist/etc/mangosd.conf
+          sed -i 's|LogsDatabase.Info = .*|LogsDatabase.Info = "127.0.0.1;3306;root;root;tw_logs"|' dist/etc/mangosd.conf
+          # 生成 realmd.conf
+          cp dist/etc/realmd.conf.dist dist/etc/realmd.conf
+          sed -i 's|LoginDatabase.Info = .*|LoginDatabase.Info = "127.0.0.1;3306;root;root;tw_logon"|' dist/etc/realmd.conf
+          # 关闭自动更新 (CI 已手动导入)
+          sed -i 's|Database.AutoUpdate.Enabled = 1|Database.AutoUpdate.Enabled = 0|' dist/etc/mangosd.conf
+          echo "Conf configured"
+
+      - name: Smoke test realmd
+        run: |
+          cd dist/bin
+          ./realmd -c ../etc/realmd.conf > /tmp/realmd.log 2>&1 &
+          REALMD_PID=$!
+          sleep 8
+          if kill -0 $REALMD_PID 2>/dev/null; then
+            echo "realmd alive (pid $REALMD_PID)"
+          else
+            echo "::error::realmd exited early"
+            cat /tmp/realmd.log
+            exit 1
+          fi
+          ss -tlnp | grep 3724 || { echo "::error::port 3724 not listening"; cat /tmp/realmd.log; exit 1; }
+          echo "realmd smoke test PASSED"
+          kill $REALMD_PID 2>/dev/null || true
+
+      - name: Smoke test mangosd (Lua engine + scripts)
+        run: |
+          cd dist/bin
+          # mangosd 对 stdin EOF 敏感, 用 </dev/null 避免立即退出
+          timeout 90 ./mangosd -c ../etc/mangosd.conf < /dev/null > /tmp/mangosd.log 2>&1 &
+          MANGO_PID=$!
+          sleep 20
+          # 检查 Lua 引擎加载 (CI 无地图文件, 验证到 Lua 加载阶段即可)
+          if grep -q "Loading Lua engine" /tmp/mangosd.log; then
+            echo "Lua engine loaded"
+          else
+            echo "::error::Lua engine not loaded"
+            cat /tmp/mangosd.log
+            exit 1
+          fi
+          if grep -qE "Loaded [0-9]+ Lua scripts" /tmp/mangosd.log; then
+            echo "Lua scripts loaded"
+          else
+            echo "::error::Lua scripts not loaded"
+            cat /tmp/mangosd.log
+            exit 1
+          fi
+          echo "mangosd smoke test PASSED (Lua engine + scripts verified)"
+          kill $MANGO_PID 2>/dev/null || true
