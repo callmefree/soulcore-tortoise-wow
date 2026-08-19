@@ -1,5 +1,9 @@
 name: soulcore-weekly-build
 
+# 主服构建: 服务器为 Ubuntu, 只跑 Linux 编译。
+# 采用 PlayerBots 分支的构建配置: BUILD_PLAYERBOTS=ON + ccache + strip + 240min 超时。
+# 保留 lua-lint 语法门禁与 smoke-test 冒烟测试(验证 Lua 引擎/脚本加载)。
+
 on:
   schedule:
     - cron: "0 3 * * 1"
@@ -9,6 +13,8 @@ on:
 
 permissions:
   contents: read
+  id-token: write
+  actions: read
 
 concurrency:
   group: soulcore-build
@@ -17,6 +23,9 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-22.04
+    # 显式超时: 免费 runner 默认 6h 但冷缓存全量编译需 3-5h,
+    # 设 240min 让成功完成的 job 能落地 ccache 缓存, 避免每次都冷编
+    timeout-minutes: 240
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -27,10 +36,11 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
-            build-essential cmake git \
+            build-essential cmake git ccache \
             libace-dev libssl-dev libbz2-dev zlib1g-dev \
-            libreadline-dev \
-            default-libmysqlclient-dev
+            libreadline-dev default-libmysqlclient-dev \
+            libboost-dev libboost-thread-dev libboost-filesystem-dev libboost-system-dev
+          ccache --version | head -1
 
       - name: Ccache cache
         uses: actions/cache@v4
@@ -42,16 +52,25 @@ jobs:
             ccache-ubuntu22-
 
       - name: Configure
+        env:
+          # 提高缓存容量上限 (GitHub cache 上限 10GB)
+          CCACHE_MAXSIZE: 8G
         run: |
           cmake -S . -B build \
             -DCMAKE_BUILD_TYPE=Release \
             -DUSE_SCRIPTS=ON \
             -DUSE_EXTRACTORS=OFF \
             -DALLOW_TURTLE_ADDONS=ON \
-            -DUSE_PCH=ON
+            -DUSE_PCH=ON \
+            -DBUILD_PLAYERBOTS=ON \
+            -DCMAKE_C_COMPILER_LAUNCHER=ccache \
+            -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
 
       - name: Build
-        run: cmake --build build -j2
+        run: |
+          cmake --build build -j4
+          echo "--- ccache stats ---"
+          ccache -s
 
       - name: Package
         run: |
@@ -59,6 +78,9 @@ jobs:
           mkdir -p dist/bin dist/etc dist/sql
           # Linux 构建:二进制输出在 build/ 下(源码根 bin/ 仅 WIN32 分支生效)
           cp build/src/mangosd/mangosd build/src/realmd/realmd dist/bin/
+          # strip 调试符号: Linux 静态链接产物符号表占体积 50%+,
+          # strip 后 mangosd 从 ~1.5GB 缩到 ~300-400MB, 运行无影响
+          strip -s dist/bin/mangosd dist/bin/realmd
           # configure 生成的 conf.dist 在 build/ 下
           find build -name "*.conf.dist" -exec cp {} dist/etc/ \;
           # 源码 .in 模板无占位符,直接改名兜底(mangosd/mods/rate/realmd)
@@ -67,130 +89,13 @@ jobs:
           # Eluna 脚本随产物发布
           cp -r lua_scripts dist/bin/ 2>/dev/null || true
           tar czf soulcore-tortoise-wow-$VERSION.tar.gz dist
+          ls -lh dist/bin/ soulcore-tortoise-wow-$VERSION.tar.gz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
           name: soulcore-tortoise-wow
           path: soulcore-tortoise-wow-*.tar.gz
-          retention-days: 14
-
-  build-windows:
-    runs-on: windows-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup vcpkg
-        shell: pwsh
-        run: |
-          if (-not (Test-Path C:\vcpkg)) {
-            git clone --depth 1 https://github.com/microsoft/vcpkg.git C:\vcpkg
-            & C:\vcpkg\bootstrap-vcpkg.bat -disableMetrics
-          }
-          echo "VCPKG_ROOT=C:\vcpkg" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Cache vcpkg
-        uses: actions/cache@v4
-        with:
-          path: C:\vcpkg\installed
-          key: vcpkg-windows-${{ github.ref_name }}-${{ github.sha }}
-          restore-keys: |
-            vcpkg-windows-${{ github.ref_name }}-
-            vcpkg-windows-
-
-      - name: Install ACE
-        shell: pwsh
-        run: |
-          C:\vcpkg\vcpkg install ace --triplet x64-windows
-          echo "ACE_ROOT=C:\vcpkg\installed\x64-windows" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-
-      - name: Patch ACE Cleanup.h (MSVC C2694 workaround)
-        shell: pwsh
-        run: |
-          # MSVC 将模板类隐式析构推断为 noexcept(false), 与 ~ACE_Cleanup()=default(noexcept) 不匹配报 C2694
-          # 将基类析构声明为 noexcept(false): 派生无论推断为 true/false 都合法, 一处修复所有派生类
-          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Cleanup.h'
-          $c = Get-Content $p -Raw
-          if ($c -match 'noexcept \(false\)') {
-            Write-Output 'Already patched'
-          } else {
-            $c = $c -replace 'virtual ~ACE_Cleanup \(\) = default;', 'virtual ~ACE_Cleanup () noexcept (false) = default;'
-            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
-            Write-Output 'Patched Cleanup.h'
-          }
-
-      - name: Patch ACE Singleton.h (MSVC C2694 workaround)
-        shell: pwsh
-        run: |
-          # 保险: 给 ACE_Singleton 也加显式 noexcept 析构
-          $p = 'C:\vcpkg\installed\x64-windows\include\ace\Singleton.h'
-          $c = Get-Content $p -Raw
-          if ($c -match '~ACE_Singleton \(\) noexcept') {
-            Write-Output 'Already patched'
-          } else {
-            $ins = "  /// Destructor.`n  ~ACE_Singleton () noexcept override = default;"
-            $c = $c -replace '(class ACE_Singleton : public ACE_Cleanup\s*\{\s*public:)', ('$1' + "`n" + $ins)
-            Set-Content -Path $p -Value $c -Encoding UTF8 -NoNewline
-            Write-Output 'Patched Singleton.h'
-          }
-
-      - name: Configure
-        shell: pwsh
-        run: |
-          cmake -B build -A x64 `
-            "-DACE_ROOT=C:\vcpkg\installed\x64-windows" `
-            -DALLOW_TURTLE_ADDONS=ON `
-            -DUSE_STD_MALLOC=ON `
-            -DUSE_SCRIPTS=ON `
-            -DUSE_ANTICHEAT=ON `
-            -DUSE_DISCORD_BOT=OFF `
-            -DUSE_EXTRACTORS=ON `
-            -DUSE_LIBCURL=OFF `
-            -DUSE_TRACY=OFF `
-            -DUSE_PCH=ON `
-            "-DCMAKE_CXX_FLAGS=/EHsc /wd4996 /wd4355 /wd4244 /wd4267 /MP /Zc:noexceptTypes-"
-
-      - name: Build
-        shell: pwsh
-        run: cmake --build build --config Release --parallel
-
-      - name: Package
-        shell: pwsh
-        run: |
-          $VERSION = (git rev-parse --short HEAD).Trim()
-          New-Item -ItemType Directory -Force -Path dist\bin, dist\etc, dist\sql | Out-Null
-          Copy-Item bin\Release\mangosd.exe, bin\Release\realmd.exe dist\bin\ -ErrorAction SilentlyContinue
-          Copy-Item bin\Release\mapextractor.exe, bin\Release\vmapextractor.exe, bin\Release\vmap_assembler.exe, bin\Release\MoveMapGen.exe dist\bin\ -ErrorAction SilentlyContinue
-          Copy-Item tools\mmap\offmesh.txt, tools\mmap\mmapSettings.txt dist\bin\ -ErrorAction SilentlyContinue
-          Copy-Item C:\vcpkg\installed\x64-windows\bin\ACE.dll dist\bin\ -ErrorAction SilentlyContinue
-          Get-ChildItem build -Recurse -Filter *.conf.dist -ErrorAction SilentlyContinue | Copy-Item -Destination dist\etc\
-          Get-ChildItem src -Recurse -Filter *.conf.dist.in -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName ("dist\etc\" + ($_.Name -replace '\.in$','')) }
-          Copy-Item -Recurse sql\* dist\sql\ -ErrorAction SilentlyContinue
-          # Eluna 脚本随产物发布
-          Copy-Item -Recurse lua_scripts dist\bin\lua_scripts\ -ErrorAction SilentlyContinue
-          # 运行时 DLL 补全脚本: libmysql.dll / libssl / libcrypto 由部署机本地提供(CI 无法生成)
-          @'
-          # copy_runtime_dlls.ps1 - 在部署机执行: 把本机运行时 DLL 补入 dist\bin
-          # 用法: powershell -ExecutionPolicy Bypass -File copy_runtime_dlls.ps1 -Src <本机server\bin路径>
-          param([Parameter(Mandatory=$true)][string]$Src)
-          $Dlls = @('libmysql.dll','libssl-1_1-x64.dll','libcrypto-1_1-x64.dll')
-          if (-not (Test-Path 'dist\bin')) { New-Item -ItemType Directory -Force -Path 'dist\bin' | Out-Null }
-          foreach ($d in $Dlls) {
-              $p = Join-Path $Src $d
-              if (Test-Path $p) { Copy-Item $p 'dist\bin\' -Force; Write-Host "OK  $d" }
-              else { Write-Warning "NOT FOUND: $d (从旧部署 server\bin 拷贝)" }
-          }
-          '@ | Set-Content dist\copy_runtime_dlls.ps1 -Encoding UTF8
-          tar czf soulcore-tortoise-wow-$VERSION-windows.tar.gz dist
-
-      - name: Upload artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: soulcore-tortoise-wow-windows
-          path: soulcore-tortoise-wow-*-windows.tar.gz
           retention-days: 14
 
   # ── Lua 语法门禁 ──────────────────────────────────────────────
