@@ -2,28 +2,37 @@
 """sync_server_baseline.py — 只读探针 + 拉取活服务器状态，对比仓库基线（版本化事实来源）。
 
 解决"服务器真身 vs git 基线漂移无人知晓"的缺口：
- 1. 只读探针（不写服务器）：systemd 服务状态、服务器目录、DB 库/关键表行数；
- 2. 拉取（只读 SFTP GET）：PB 服 `lua_scripts/`、`data/dbc` 关键 DBC 回本地 `server_baseline/`；
+ 1. 只读探针（不写服务器）：systemd 服务状态、DB 库/关键表行数；
+ 2. 拉取（只读 SFTP GET）：PB 服 `lua_scripts/`、`data/dbc` 回本地 `server_baseline/`；
  3. 对比仓库 `lua_scripts/` 与拉取副本，报告漂移；
  4. 生成 `docs/服务器现状_快照_<时间>.md`（事实快照，建议提交归档）。
 
+漂移检查（`--check`，供本地/CI 定期执行）：
+   探针 DB 事实 → 与 `docs/server_baseline_expected.json`（提交进库的期望值）比对，
+   任何指标漂移 → 非零退出并打印 diff；另拉取 Lua 与仓库 diff，一并计入结果。
+
 用法（需 python + paramiko；口令走环境变量，详见 deploy/README.md）：
   export SOULCORE_SSH_PASS=... SOULCORE_DB_PASS=...
-  python deploy/sync_server_baseline.py             # 完整：探针+拉取+对比+快照
-  python deploy/sync_server_baseline.py --no-pull   # 只探针+快照，不下载文件
+  python deploy/sync_server_baseline.py                # 完整：探针+拉取+对比+快照
+  python deploy/sync_server_baseline.py --no-pull      # 只探针+快照，不下载
+  python deploy/sync_server_baseline.py --check        # 漂移检查（非零=漂移）；加 --no-pull 跳过 Lua 拉取
+  python deploy/sync_server_baseline.py --store-expected # 把当前 DB 事实写为期望基线（迁移落地后跑）
 
 输出：
   docs/服务器现状_快照_<YYYYmmdd_HHMM>.md   # 建议 git 提交
+  docs/server_baseline_expected.json       # 期望值基线（--store-expected 生成，入库）
   server_baseline/                         # 活服文件留存（git 忽略，仅本地比对用）
 """
 import os
 import sys
+import json
 import socket
 import datetime
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-REPO = os.path.dirname(BASE)                      # 仓库根
-LIVE_DIR = os.path.join(REPO, "server_baseline")  # 拉取文件临时存放（不入库）
+REPO = os.path.dirname(BASE)                        # 仓库根
+LIVE_DIR = os.path.join(REPO, "server_baseline")    # 拉取文件临时存放（不入库）
+EXPECTED_FILE = os.path.join(REPO, "docs", "server_baseline_expected.json")
 
 HOST = os.environ.get('SOULCORE_HOST', 'soulcore.asia')
 PORT = int(os.environ.get('SOULCORE_PORT', '56789'))
@@ -69,7 +78,7 @@ def probe_services(cli):
 
 
 def probe_dbs(cli):
-    """只读：列出数据库 + PB 世界库关键表的终态校验数。"""
+    """只读：列出数据库 + PB 世界库关键表的终态校验数（keys 与期望 JSON 对齐）。"""
     if not DBPASS:
         return {"error": "未设 SOULCORE_DB_PASS，跳过 DB 探针"}
     rows = {}
@@ -88,52 +97,109 @@ def probe_dbs(cli):
     return rows
 
 
+def _num(v):
+    if v is None:
+        return None
+    try:
+        return int(str(v))
+    except (TypeError, ValueError):
+        try:
+            return float(str(v))
+        except (TypeError, ValueError):
+            return None
+
+
+def run_check(dbs):
+    """比对 DB 事实与期望基线；漂移则返回非零。"""
+    if "error" in dbs:
+        print("[ERR] %s" % dbs["error"])
+        return 1
+    if not os.path.isfile(EXPECTED_FILE):
+        print("[ERR] 缺 %s；先跑 --store-expected 生成期望基线（入库）" % EXPECTED_FILE)
+        return 1
+    with open(EXPECTED_FILE, encoding='utf-8') as f:
+        exp = json.load(f)
+    fails = []
+    rows = []
+    for k in sorted(exp):
+        if k.endswith("_tol"):
+            continue
+        want = exp[k]
+        live = dbs.get(k)
+        live_n = _num(live)
+        if want is None or live_n is None:
+            rows.append((k, want, live, "info"))
+            continue
+        tol = exp.get(k + "_tol", 0)
+        ok = abs(live_n - want) <= tol
+        rows.append((k, want, live, "OK" if ok else "DRIFT"))
+        if not ok:
+            fails.append(k)
+    w = max((len(str(r[0])) for r in rows), default=20)
+    print("%-*s  %-14s %-14s %s" % (w, "key", "expect", "live", "result"))
+    for r in rows:
+        print("%-*s  %-14s %-14s %s" % (w, r[0], r[1], r[2], r[3]))
+    if fails:
+        print("== DRIFT %d 项: %s ==" % (len(fails), ", ".join(fails)))
+        return 1
+    print("== OK：DB 事实与期望基线一致 ==")
+    return 0
+
+
+def store_expected(dbs):
+    """把当前 DB 事实写为期望基线（迁移落地后再跑，结果入库随 git）。"""
+    if "error" in dbs:
+        print("[ERR] %s" % dbs["error"])
+        return 1
+    exp = {}
+    for k in sorted(dbs):
+        if k in ("databases", "error"):
+            continue
+        v = _num(dbs[k])
+        exp[k] = v  # None 值视为「信息项」不参与严格比对
+    # 为权重和加小容差（浮点 round 微差）
+    if "item_enchantment_template.52001_weight" in exp:
+        exp["item_enchantment_template.52001_weight_tol"] = 0.01
+    os.makedirs(os.path.dirname(EXPECTED_FILE), exist_ok=True)
+    with open(EXPECTED_FILE, "w", encoding="utf-8") as f:
+        json.dump(exp, f, ensure_ascii=False, indent=2)
+    print("== 期望基线已写入 %s（请 git 提交）==" % EXPECTED_FILE)
+    return 0
+
+
 def pull_dir(cli, remote, local_sub):
-    """只读 SFTP 拉取目录下全部文件到 server_baseline/<local_sub>/"""
+    """只读 SFTP 拉取目录树到 server_baseline/<local_sub>/（供比对）。"""
     sftp = cli.open_sftp()
     out = []
     try:
-        names = sftp.listdir(remote)
-    except IOError:
-        return ["[listdir 失败] %s" % remote]
-    dst = os.path.join(LIVE_DIR, local_sub)
-    os.makedirs(dst, exist_ok=True)
-    for n in names:
-        rp = "%s/%s" % (remote, n)
-        try:
-            if (sftp.stat(rp).st_mode & 0o40000):   # 是目录 → 递归
-                out += pull_dir2(sftp, rp, os.path.join(local_sub, n))
-                continue
-        except IOError:
-            pass
-        lp = os.path.join(dst, n)
-        try:
-            sftp.get(rp, lp)
-            out.append("%s -> %s" % (rp, lp))
-        except IOError as e:
-            out.append("[get 失败] %s (%s)" % (rp, e))
+        for n in sftp.listdir(remote):
+            out += _pull_rec(sftp, "%s/%s" % (remote, n), n, local_sub)
+    except IOError as e:
+        out.append("[listdir 失败] %s (%s)" % (remote, e))
+    finally:
+        sftp.close()
     return out
 
 
-def pull_dir2(sftp, remote, local_sub):
-    """递归拉取（sftp 句柄复用）。"""
+def _pull_rec(sftp, rp, name, local_sub):
     dst = os.path.join(REPO, "server_baseline", local_sub)
     os.makedirs(dst, exist_ok=True)
     out = []
-    for n in sftp.listdir(remote):
-        rp = "%s/%s" % (remote, n)
-        try:
-            if (sftp.stat(rp).st_mode & 0o40000):
-                out += pull_dir2(sftp, rp, os.path.join(local_sub, n))
-                continue
-        except IOError:
-            pass
-        lp = os.path.join(dst, n)
-        try:
-            sftp.get(rp, lp)
-            out.append("%s -> %s" % (rp, lp))
-        except IOError as e:
-            out.append("[get 失败] %s (%s)" % (rp, e))
+    lp = os.path.join(dst, name)
+    try:
+        st = sftp.stat(rp)
+        if st.st_mode & 0o40000:  # 目录 → 递归
+            sub = os.path.join(local_sub, name)
+            for n in sftp.listdir(rp):
+                out += _pull_rec(sftp, "%s/%s" % (rp, n), n, sub)
+            return out
+    except IOError:
+        pass
+    try:
+        sftp.get(rp, lp)
+        out.append("%s -> %s" % (rp, lp))
+    except IOError as e:
+        out.append("[get 失败] %s (%s)" % (rp, e))
     return out
 
 
@@ -160,8 +226,7 @@ def compare_drift(repo_sub, live_sub):
     for root, _d, files in os.walk(live_dir):
         for fn in files:
             lp = os.path.join(root, fn)
-            rel = os.path.relpath(lp, live_dir)
-            local_map[rel] = md5file(lp)
+            local_map[os.path.relpath(lp, live_dir)] = md5file(lp)
     for root, _d, files in os.walk(repo_dir):
         for fn in files:
             if fn.startswith("README"):
@@ -174,8 +239,7 @@ def compare_drift(repo_sub, live_sub):
             elif local_map[rel] != lm:
                 drift.append("[内容漂移]   %s" % rel)
     for rel in local_map:
-        rp = os.path.join(repo_dir, rel)
-        if not os.path.exists(rp):
+        if not os.path.exists(os.path.join(repo_dir, rel)):
             drift.append("[活服有/仓库无] %s" % rel)
     return drift
 
@@ -226,8 +290,11 @@ def gen_snapshot(services, dbs, pulls, drifts):
 def main():
     if not PASS:
         print("[ERR] 请先 export SOULCORE_SSH_PASS=（见 deploy/README.md）")
-        sys.exit(1)
-    do_pull = "--no-pull" not in sys.argv
+        return 1
+    args = set(sys.argv[1:])
+    check_mode = "--check" in args
+    store_mode = "--store-expected" in args
+    do_pull = "--no-pull" not in args and not store_mode
     cli = connect()
     try:
         print("== 探针: services ==")
@@ -237,7 +304,22 @@ def main():
         print("== 探针: DB ==")
         dbs = probe_dbs(cli)
         for k, v in dbs.items():
-            print("  %-40s %s" % (k, v))
+            print("  %-42s %s" % (k, v))
+
+        if check_mode:
+            rc = run_check(dbs)
+            if do_pull:
+                print("== 拉取 lua_scripts 并比对 ==")
+                pulls = pull_dir(cli, PB_LUA, "lua")
+                drifts = compare_drift("lua_scripts", "lua")
+                for d in drifts:
+                    print("  " + d)
+                if drifts:
+                    rc = rc or 1
+            return rc
+        if store_mode:
+            return store_expected(dbs)
+
         pulls = []
         drifts = []
         if do_pull:
@@ -251,9 +333,10 @@ def main():
                 print("  " + d)
         out = gen_snapshot(services, dbs, pulls, drifts)
         print("== 快照已生成: %s ==" % out)
+        return 0
     finally:
         cli.close()
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

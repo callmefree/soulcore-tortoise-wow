@@ -3,13 +3,14 @@
 ssh_soulcore.py — SoulCore Ubuntu 服务器运维工具（paramiko，强制 IPv4）
 用法：
   python ssh_soulcore.py <远程命令字符串>     # 执行单条命令（bash -lc）
-  python ssh_soulcore.py --mysql <sql文件>   # 通过 stdin 执行 SQL 到 tw_world
+  python ssh_soulcore.py --mysql <sql文件> [db]     # 目标库缺省自动解析（USE/文件头）；默认 tw_world
   python ssh_soulcore.py --mysql-char <sql文件>
-  python ssh_soulcore.py --mysql-all <sql文件>  # 逐库判断（文件内 USE 语句优先）
+  python ssh_soulcore.py --mysql-all <sql文件> [db] # 自动解析各文件目标库，不依赖 USE
 """
 import socket
 import sys
 import os
+import re
 import paramiko
 
 HOST = os.environ.get('SOULCORE_HOST', 'soulcore.asia')  # 强制 IPv4；域名解析随拨号变IP，避免硬编码失效
@@ -17,6 +18,23 @@ PORT = int(os.environ.get('SOULCORE_PORT', '56789'))
 USER = os.environ.get('SOULCORE_USER', 'administrator')
 PASS = os.environ.get('SOULCORE_SSH_PASS', '')
 DBPASS = os.environ.get('SOULCORE_DB_PASS', '')
+
+# 迁移文件目标库解析：USE 语句 优先，其次文件头「目标库: xxx」标注（兼容全角冒号/｜分隔）
+_USE_RE = re.compile(r'\bUSE\s+`?([A-Za-z0-9_]+)`?\s*;', re.IGNORECASE)
+_TGT_RE = re.compile(r'目标库[:：]\s*([^\s｜|，,；;（(]+)')
+
+
+def resolve_db(sql):
+    m = _USE_RE.search(sql)
+    if m:
+        return m.group(1)
+    for line in sql.splitlines():
+        m = _TGT_RE.search(line)
+        if m:
+            tok = m.group(1).strip()
+            if tok and tok != '无':
+                return tok
+    return None
 
 
 def get_sock():
@@ -50,9 +68,17 @@ def run_cmd(cmd, timeout=120):
         cli.close()
 
 
-def run_mysql(sql_path, db='tw_world'):
+def run_mysql(sql_path, db=None):
+    """执行 SQL 到指定库。db 缺省时自动解析：文件内 USE 语句 → 文件头「目标库:」→ 默认 tw_world。"""
     with open(sql_path, 'r', encoding='utf-8') as f:
         sql = f.read()
+    if not db:
+        db = resolve_db(sql)
+        if db:
+            print("-- 目标库自动解析: %s（来自 %s）" % (db, os.path.basename(sql_path)))
+        else:
+            db = 'tw_world'
+            print("[warn] %s 未含 USE/目标库标注，默认 tw_world；如目标非此库请显式传 db" % os.path.basename(sql_path))
     cli = connect()
     try:
         # 上传到远端临时文件再导入，避免 stdin 编码问题
@@ -92,10 +118,11 @@ if __name__ == '__main__':
         finally:
             cli.close()
     elif sys.argv[1] == '--mysql':
-        run_mysql(sys.argv[2], db='tw_world')
+        run_mysql(sys.argv[2], db=sys.argv[3] if len(sys.argv) > 3 else None)
     elif sys.argv[1] == '--mysql-char':
         run_mysql(sys.argv[2], db='tw_char')
     elif sys.argv[1] == '--mysql-all':
-        run_mysql(sys.argv[2], db='')  # 依赖文件内 USE
+        # 自动解析：文件内 USE 语句 或 文件头「目标库:」；可显式传第 2 参覆盖
+        run_mysql(sys.argv[2], db=sys.argv[3] if len(sys.argv) > 3 else None)
     else:
         run_cmd(' '.join(sys.argv[1:]))

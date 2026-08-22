@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 """通用 paramiko SSH 执行器（强制 IPv4，避免 soulcore.asia 之类域名走 IPv6 卡死）。
 用法：
-   python 工具/ssh_generic.py HOST PORT USER PASS 'command'
-密码含特殊字符时务必用单引号包住整个命令串。
+   SOULCORE_SSH_PASS=<口令> python ssh_generic.py HOST PORT USER 'command'
+口令走环境变量（不落 argv/ps），与 deploy/README.md 脱敏原则一致。
 """
+import os
 import sys
 import socket
 import paramiko
@@ -18,11 +19,15 @@ def make_sock(host, port):
 
 
 def main():
-    if len(sys.argv) < 5:
-        print("usage: ssh_generic.py HOST PORT USER PASS 'command'")
+    if len(sys.argv) < 4:
+        print("usage: ssh_generic.py HOST PORT USER 'command'   (口令走环境变量 SOULCORE_SSH_PASS)")
         sys.exit(1)
-    host, port, user, passwd = sys.argv[1], int(sys.argv[2]), sys.argv[3], sys.argv[4]
-    cmd = sys.argv[5] if len(sys.argv) > 5 else "echo ok"
+    host, port, user = sys.argv[1], int(sys.argv[2]), sys.argv[3]
+    passwd = os.environ.get('SOULCORE_SSH_PASS', '')
+    if not passwd:
+        print("[ERR] 请先 export SOULCORE_SSH_PASS=（口令不落命令行/ps）")
+        sys.exit(2)
+    cmd = sys.argv[4] if len(sys.argv) > 4 else "echo ok"
     c = paramiko.SSHClient()
     c.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     c.connect(host, port=port, username=user, password=passwd,

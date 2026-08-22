@@ -1,0 +1,8 @@
+{
+  "item_enchantment_template.50001": 3,
+  "item_enchantment_template.52001": 16716,
+  "item_enchantment_template.52001_weight": 99.999999,
+  "item_enchantment_template.52001_weight_tol": 0.01,
+  "spell_proc_event.baseline": 15793,
+  "item_template.random=52001": null
+}

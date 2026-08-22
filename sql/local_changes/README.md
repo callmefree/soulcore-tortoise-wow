@@ -51,10 +51,27 @@ MYSQL="<mariadb>/bin/mysql.exe"   # 或服务器端 mysql -uroot
 "$MYSQL" -uroot -p < sql/local_changes/023_irp_p2_dead_link_purge.sql
 ```
 
-生产应用用 `deploy/ssh_soulcore.py --mysql / --mysql-all <file>`（见 `docs/工作流SOP_2026-08-22.md`）。
+生产应用用 `deploy/ssh_soulcore.py --mysql-all <file> [db]`（见 `docs/工作流SOP_2026-08-22.md`）。
+
+## 部署路由（目标库自动解析）
+
+- `--mysql-all <file>` 自动解析目标库：**文件内 `USE <db>;` → 文件头「目标库:」→ 默认 tw_world**（010 类纯登记文件会走默认并告警）。
+- 「目标库」惯例：`001/010-017` 为**主服库族**名（tw_world / tw_logon，历史应用对象）；`018-023` 为 **PB 库族**（tw_pb_world）。**部署到 PB 实例时，非 PB 头的文件需显式传库**：`--mysql-all 017_phase1_reforge.sql tw_pb_world`。
+- **禁止**把 `_deprecated/`（标注禁止重放）或 `018_phase1_sockets_ddl.sql` 等废弃文件灌入任何实例——按**完整文件名 + 文件头**定位，勿只看 `NNN_` 前缀。
+
+## 执行顺序与可重复性（幂等语义）
+
+- **唯真源承诺**：完整终态 = 按序重放 `001-023`；**pre-P2 回滚** = 只重放 `001-017`（不建 IRP 池）。
+- 幂等说明：`018/019/022` = DELETE+INSERT 重建（重放结果恒定）；`020/021` = UPDATE / ON DUPLICATE KEY 值覆盖（重放同值）；`023` = DELETE 指定 ench 段 + UPDATE chance（对已删行无害、同值）。**但** 022/023 建立在 019 建池之上——中途跳过会产生中间状态，务必按序整链重放。
+- 建议在**测试库**先整链重放验证再上活（尤其 022/023 含 DDL/DELETE）。可用 `deploy/sync_server_baseline.py --check` 在活服**只读**校验终态是否与期望基线一致；`--store-expected` 在迁移落地后刷新期望值。
+
+## 版本基线标签
+
+- `master` 首个"已知良好"锚点：`v-baseline-2026-08-22`（扣住上述 001-023 与现状文档）。
+- 以后每完成一个阶段打 `v-phaseN-YYYYMMDD`；日常追加迁移不污染标签。
 
 ## 规范
 
-- 编号递增（`NNN_` 前缀），所有文件**幂等可重放**（DELETE+INSERT / ON DUPLICATE KEY UPDATE / UPDATE 兜底）。
+- 编号递增（`NNN_` 前缀），所有文件**幂等可重放**（DELETE+INSERT / ON DUPLICATE KEY UPDATE / UPDATE 兜底；详见上节）。
 - 文件头注释写明：来源、原因、目标库、前置、状态。
 - **新改动只追加、不回改旧迁移**；本地开发每次改动 = 一个新编号文件 → git 提交 → 应用到服务器。

@@ -23,7 +23,7 @@
 
 | 脚本 | 用途 | 备注 |
 |---|---|---|
-| `ssh_soulcore.py` | **主运维工具**：远程命令 / `--mysql` 导 SQL / `--put` 传 Lua | 强制 IPv4；SOP 主用 |
+| `ssh_soulcore.py` | **主运维工具**：远程命令 / `--mysql-all` 导 SQL（目标库自动解析） / `--put` 传 Lua | 强制 IPv4；SOP 主用 |
 | `tunnel_3306.py` | 本地→服务器 3306 端口转发（注册页联调） | 环境变量默认 |
 | `pbmangosd.service` / `pbrealmd.service` / `pb-tunnel.service` | PB 服 systemd 单元（`/opt/soulcore-pb/`） | 无凭据，直接入库 |
 | `deploy_units.py` | 部署上述 3 个 systemd 单元到服务器 | |
@@ -37,9 +37,9 @@
 | `setup_fn_key.py` | 建立 游戏服→FNOS 免密 key 通道 | |
 | `launch_mangosd.py` / `tunnel_launch.py` | 启动 mangosd / 建隧道 | |
 | `pb_deploy_exec.py` / `pb_diff_analyze.py` / `pb_diff_show.py` | PB 部署执行 / diff 分析 | 项目脚本 |
-| `ssh_generic.py` | 通用 SSH 执行 | |
+| `ssh_generic.py` | 通用 SSH 执行（口令走 `SOULCORE_SSH_PASS` env，**不落 argv/ps**） | |
 | `analyze_core.sh` | 服务器日志/崩溃分析脚本 | |
-| `sync_server_baseline.py` | **(见下方待建)** 只读探针+拉取活服状态对比仓库 | 需 python+SSH |
+| `sync_server_baseline.py` | **只读探针 + 漂移检查**：`--check` 比对活服与 `docs/server_baseline_expected.json`（漂移非零退出）；`--store-expected` 刷新期望基线；默认生成 `docs/服务器现状_快照_*.md` | 需 python+SSH |
 
 ## 用法示例
 
@@ -47,11 +47,16 @@
 export SOULCORE_SSH_PASS='***' SOULCORE_DB_PASS='***'
 # 拉取/执行远程命令
 python deploy/ssh_soulcore.py 'systemctl is-active pbmangosd pbrealmd mariadb'
-# 导 SQL 到 PB 世界库（文件内 USE tw_pb_world）
+# 导 SQL：目标库自动解析（USE → 文件头「目标库」→ 默认 tw_world）
 python deploy/ssh_soulcore.py --mysql-all sql/local_changes/023_irp_p2_dead_link_purge.sql
+#   部署 001-017（头标主服库族）到 PB 实例时显式传库：
+python deploy/ssh_soulcore.py --mysql-all sql/local_changes/017_phase1_reforge.sql tw_pb_world
 # 传 Lua
 python deploy/ssh_soulcore.py --put lua_scripts/enchant/random_enchant.lua
 # NAS 冷备
 python deploy/run_backup.py
+# 服务器真身漂移检查（非零=漂移；迁移落地后先 --store-expected 刷新期望值）
+python deploy/sync_server_baseline.py --check
+python deploy/sync_server_baseline.py --store-expected
 ```
 > 详细工作流见 `docs/工作流SOP_2026-08-22.md`。

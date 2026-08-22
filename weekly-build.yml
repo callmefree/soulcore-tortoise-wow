@@ -7,6 +7,11 @@ on:
   schedule:
     - cron: "0 3 * * 1"
   workflow_dispatch:
+    inputs:
+      check-sync:
+        description: 'Run content baseline drift check (live vs expected) — 需先启用 check_content_baseline job'
+        type: boolean
+        default: false
   push:
     branches: [main]
 
@@ -195,3 +200,47 @@ foreach ($d in $Dlls) {
           name: soulcore-tortoise-wow-windows
           path: soulcore-tortoise-wow-*-windows.tar.gz
           retention-days: 14
+
+  # ------------------------------------------------------------------
+  # 内容基线漂移检查（只在手动 dispatch 且输入 check-sync=true 时运行）
+  # ------------------------------------------------------------------
+  # ⚠️ 前置（当前不满足，故默认不跑）：
+  #   1) 本文件头部已注明「用户决定不推送 GitHub」→ cron 不会自动触发；
+  #      若要启用，需解除该决定并推送，或改用自托管 runner。
+  #   2) 本 job checkout 的是 C++ 源码仓库；而 deploy/sync_server_baseline.py
+  #      与 docs/server_baseline_expected.json 在外层"管理仓库"（无 remote）里。
+  #      启用前需把这些文件并入本仓库 checkout（或第二个 checkout 私有管理仓）。
+  #   3) 在仓库 Settings→Secrets 配置 SOULCORE_SSH_PASS / SOULCORE_DB_PASS
+  #      （凭据只走 secret，不入库 — 与脱敏原则一致）。
+  # 启用方法：推送本文件 + 满足 1/2/3 后，把下面的 `&& false` 删除，
+  #           并在 Actions 手动触发勾选 check-sync。
+  check_content_baseline:
+    runs-on: ubuntu-22.04
+    if: github.event_name == 'workflow_dispatch' && github.event.inputs.check-sync == 'true' && false
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install paramiko
+        run: python -m pip install --quiet paramiko
+
+      - name: Drift check (live vs committed expected baseline)
+        env:
+          SOULCORE_SSH_PASS: ${{ secrets.SOULCORE_SSH_PASS }}
+          SOULCORE_DB_PASS:  ${{ secrets.SOULCORE_DB_PASS }}
+          GITHUB_PAT:        ${{ secrets.GITHUB_PAT }}
+          SOULCORE_PROXY:    ${{ secrets.SOULCORE_PROXY }}
+        run: python deploy/sync_server_baseline.py --check --no-pull
+
+      - name: Upload probe report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sync-baseline-report
+          path: docs/服务器现状_快照_*.md
+          retention-days: 30
