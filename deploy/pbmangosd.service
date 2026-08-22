@@ -1,0 +1,18 @@
+[Unit]
+Description=PB WoW mangosd (world server)
+After=network-online.target pbrealmd.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=administrator
+WorkingDirectory=/opt/soulcore-pb/server/bin
+ExecStart=/opt/soulcore-pb/server/bin/mangosd -c /opt/soulcore-pb/server/etc/mangosd.conf
+# tty-force 分配伪终端，避免 stdin EOF 导致 mangosd 优雅 halt（systemd 默认 stdin=/dev/null）
+StandardInput=tty-force
+TTYReset=yes
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

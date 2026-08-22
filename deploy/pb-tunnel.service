@@ -1,0 +1,14 @@
+[Unit]
+Description=PB WoW reverse SSH tunnel to HK (8.218.198.169)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=administrator
+ExecStart=/usr/bin/ssh -i /home/administrator/.ssh/id_ed25519_hk -o StrictHostKeyChecking=no -o ServerAliveInterval=30 -o ServerAliveCountMax=3 -N -R 3725:localhost:3725 -R 8091:localhost:8091 root@8.218.198.169
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

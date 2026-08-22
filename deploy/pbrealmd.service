@@ -1,0 +1,18 @@
+[Unit]
+Description=PB WoW realmd (auth server)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=administrator
+WorkingDirectory=/opt/soulcore-pb/server/bin
+ExecStart=/opt/soulcore-pb/server/bin/realmd -c /opt/soulcore-pb/server/etc/realmd.conf
+# tty-force 分配伪终端，防止 stdin EOF 让控制台程序自行退出（与 mangosd 同源风险）
+StandardInput=tty-force
+TTYReset=yes
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

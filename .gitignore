@@ -1,40 +1,49 @@
 # ============================================================
-# .gitignore — 白名单模式：只跟踪项目文档/增量 SQL/ARPG Lua/工具脚本
-# 排除：服务端二进制、MariaDB、地图/客户端数据、构建产物（体积巨大且可重装）
+# .gitignore — 白名单模式：只跟踪 增量SQL迁移链/Lua/DBC/部署脚本/文档
+# 排除：服务端二进制、MariaDB、地图与客户端数据、DB dump、构建产物（体积巨大且可重装）
 # ============================================================
 
 # 根目录：默认全部忽略，再按需放行
 /*
 !.gitignore
+!.gitattributes
 
 # 文档（任意层级的 .md/.yml 小文件）
 !*.md
 !*.yml
 
-# PlayerBots 工作线文档（子目录归档）
-!/PlayerBots文档/
-/PlayerBots文档/*
-!/PlayerBots文档/*.md
-
-# 增量 SQL（只跟踪 local_changes）
+# ============ 增量 SQL 迁移链（唯一真源，可复现活服务器内容状态）============
 !/sql/
 /sql/*
 !/sql/local_changes/
+!/sql/local_changes/**
 
-# ARPG Lua 脚本 + 根目录散落的 lua
-!/server/
-/server/*
-!/server/bin/
-/server/bin/*
-!/server/bin/lua_scripts/
-!/super_hearthstone.lua
+# ============ Lua 脚本（core/arpg/enchant 三组）============
+!/lua_scripts/
+!/lua_scripts/**
 
-# 工具脚本（Python/测试样例）
-!/工具/
-/工具/*
-!/工具/*.py
-!/工具/*.sql
-!/工具/*.md
+# ============ DBC 随机附魔资产（中小二进制，允许入库）============
+!/dbc/
+/dbc/*
+!/dbc/random_enchant/
+!/dbc/random_enchant/**
+
+# ============ 部署运维脚本（已脱敏：凭据只走环境变量，禁明文落盘）============
+!/deploy/
+/deploy/*
+!/deploy/**
+/deploy/**/__pycache__/
+/deploy/**/*.pyc
+
+# ============ 文档（现状/SOP/报告，除 _archive 历史外）============
+!/docs/
+/docs/**/__pycache__/
+
+# ============ 历史引用兼容规则（当前根目录已无这些路径，保留备查）============
+# PlayerBots 工作线文档
+!/PlayerBots文档/
+/PlayerBots文档/*
+!/PlayerBots文档/*.md
 
 # 素材（只跟踪文本类，忽略图片/压缩包/原文二进制）
 !/素材/
@@ -47,5 +56,9 @@
 !/素材/**/*.md
 !/素材/**/*.txt
 
-# 遗留归档（含硬编码凭据的运维脚本，禁止入库；白名单模式下 _archive 默认已忽略，此处显式兜底）
-_archive/py_遗留归档_*/
+# ============ 明确不入库的目录/内容（白名单模式下默认已忽略，此处显式兜底）============
+_archive/            # 历史归档区（含硬编码凭据脚本），只读来源
+outputs/             # 一次性工作区（P1/P2 探针脚本与中间产物）
+客户端/              # 游戏客户端 10.5GB
+server/              # 服务端二进制/地图数据/MariaDB
+mariadb/             # 本地 MariaDB 绿色版
