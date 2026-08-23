@@ -11,9 +11,8 @@
 | `_archive/` | 全部历史归档资产（只读来源，**不入库**，见下） |
 | `outputs/` | 一次性工作区（P1/P2 探针与中间产物，**不入库**） |
 | `weekly-build.yml` | GitHub Actions 周构建工作流 |
-| `sql/local_changes/` | ⭐ **SQL 迁移链 001-023**（唯一真源，可复现内容终态） |
+| `sql/local_changes/` | ⭐ **SQL 迁移链 001-017**（唯一真源，可复现内容终态） |
 | `lua_scripts/` | ⭐ **自定义 Lua**（core / arpg / enchant 三组） |
-| `dbc/random_enchant/` | ⭐ **随机附魔 DBC**（PB 服部署快照） |
 | `deploy/` | ⭐ **部署运维脚本**（已脱敏，凭据走 env） |
 | `docs/` | ⭐ **现状 / 工作流SOP / 报告归档** |
 
@@ -25,7 +24,6 @@
 | `docs/工作流SOP_2026-08-22.md` | **以后开发流程**（改动→提交→应用→记录） | 开发前必读 |
 | `sql/local_changes/README.md` | 迁移链索引（编号/目标库/状态） | 数据库改动 |
 | `lua_scripts/README.md` | 三组脚本用途与部署现状 | Lua 开发 |
-| `dbc/random_enchant/README.md` | DBC↔SQL↔客户端关联 | DBC 操作 |
 | `deploy/README.md` | 脚本清单 + 环境变量说明 | 远程运维 |
 | `docs/reports/` | 随机附魔 P0/P1/P2 报告、衬衣/可行性等 | 工作记录 |
 

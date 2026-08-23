@@ -48,11 +48,10 @@ export SOULCORE_SSH_PASS='***' SOULCORE_DB_PASS='***'
 # 拉取/执行远程命令
 python deploy/ssh_soulcore.py 'systemctl is-active pbmangosd pbrealmd mariadb'
 # 导 SQL：目标库自动解析（USE → 文件头「目标库」→ 默认 tw_world）
-python deploy/ssh_soulcore.py --mysql-all sql/local_changes/023_irp_p2_dead_link_purge.sql
-#   部署 001-017（头标主服库族）到 PB 实例时显式传库：
-python deploy/ssh_soulcore.py --mysql-all sql/local_changes/017_phase1_reforge.sql tw_pb_world
+python deploy/ssh_soulcore.py --mysql-all sql/local_changes/017_phase1_reforge.sql
+#   部署 001-017（头标主服库族）到 PB 实例时显式传库：--mysql-all 017_phase1_reforge.sql tw_pb_world
 # 传 Lua
-python deploy/ssh_soulcore.py --put lua_scripts/enchant/random_enchant.lua
+python deploy/ssh_soulcore.py --put lua_scripts/core/welcome.lua /opt/soulcore-pb/server/bin/lua_scripts/welcome.lua
 # NAS 冷备
 python deploy/run_backup.py
 # 服务器真身漂移检查（非零=漂移；迁移落地后先 --store-expected 刷新期望值）

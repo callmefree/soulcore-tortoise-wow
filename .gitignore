@@ -22,12 +22,6 @@
 !/lua_scripts/
 !/lua_scripts/**
 
-# ============ DBC 随机附魔资产（中小二进制，允许入库）============
-!/dbc/
-/dbc/*
-!/dbc/random_enchant/
-!/dbc/random_enchant/**
-
 # ============ 部署运维脚本（已脱敏：凭据只走环境变量，禁明文落盘）============
 !/deploy/
 /deploy/*

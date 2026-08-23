@@ -23,17 +23,15 @@
 > 已砍除的 gem/rune/socket/combine/gate 脚本（配 013-016 废弃 SQL）可在 git 历史与
 > `ARPG_归档_2026-08-12` 中找到，无需恢复。
 
-## enchant/ — 附魔/成长衬衣/随机附魔
+## enchant/ — 附魔/成长衬衣
 
 | 文件 | 用途 | 部署现状 |
 |---|---|---|
 | `growing_shirt.lua` / `_mvp` / `_v2` | 成长衬衣附魔（三个迭代版本，另见 `docs/reports/` 衬衣文档） | 开发副本 |
 | `starter_gift_bag.lua` | 新手礼包 | 开发副本 |
-| `random_enchant.lua` | **随机附魔（Orange 试点，已部署，1100 行）** | ✅ PB 服 |
-| `random_enchant_new.lua` | 随机附魔 WIP 变体（937 行，未部署） | 开发中 |
 | `enchant_data_extract.lua` | 附魔数据提取脚本（工具，非游戏逻辑） | — |
 
-> 随机附魔对应 DBC 与权重池：见 `dbc/random_enchant/`、`sql/local_changes/018-023`。
+> 随机附魔相关脚本与 DBC 已于 2026-08-23 归档至 `_archive/random_enchant_irp_cleanup_20260823/`。
 
 ## 部署
 
